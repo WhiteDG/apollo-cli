@@ -1,0 +1,19 @@
+{
+  "name": "apollo-cli",
+  "version": "0.1.0",
+  "description": "Apollo 配置中心命令行工具",
+  "type": "module",
+  "bin": {
+    "apollo-cli": "bin/apollo-cli.js"
+  },
+  "engines": {
+    "node": ">=21"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\""
+  }
+}
