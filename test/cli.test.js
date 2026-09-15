@@ -10,7 +10,8 @@ import {
   jsonResponse,
   redirectResponse,
   seedUserConfig,
-  seedSession
+  seedSession,
+  fileNsHandler
 } from './helpers.js';
 
 const iso = setupIsolatedHome();
@@ -125,11 +126,13 @@ test('cli：ns 子命令帮助与缺参', async () => {
 
 test('cli：ns ls 成功走通（fetch 桩）', async t => {
   seedDev();
-  const calls = fetchStub(t, () => jsonResponse([{ baseInfo: { namespaceName: 'application' } }]));
+  const calls = fetchStub(t, () =>
+    jsonResponse([{ baseInfo: { namespaceName: 'application' }, items: [{ key: 'a' }, { key: 'b' }] }])
+  );
   const res = await runCli(['ns', 'ls', 'MyApp', '--json']);
   assert.equal(calls[0].url, `${portal}/apps/MyApp/envs/DEV/clusters/default/namespaces`);
   assert.deepEqual(JSON.parse(res.stdout), [
-    { appId: 'MyApp', 命名空间: 'application', 格式: 'properties', 类型: '私有', 配置数: '-' }
+    { appId: 'MyApp', 命名空间: 'application', 格式: 'properties', 类型: '私有', 配置数: 2 }
   ]);
   assert.equal(res.exitCode, undefined);
 });
@@ -192,6 +195,42 @@ test('cli：-e/-n 透传到目标环境与命名空间', async t => {
     'http://uat.test/apps/app/envs/UAT/clusters/default/namespaces/custom.ns/items'
   );
   assert.deepEqual(JSON.parse(res.stdout), [{ key: 'k', value: 'v', 注释: '', 修改人: '', 修改时间: '' }]);
+});
+
+test('cli：config get 文件型字段透传并输出标量', async t => {
+  seedDev();
+  const calls = fetchStub(
+    t,
+    fileNsHandler({ format: 'yml', namespace: 'app.yml', items: [{ key: 'content', value: 'a: 1\n' }] })
+  );
+  const res = await runCli(['config', 'get', 'app', 'a', '-n', 'app.yml']);
+  assert.equal(res.stdout, '1\n');
+  assert.equal(res.exitCode, undefined);
+  assert.match(calls[0].url, /\/namespaces\/app\.yml\/items$/);
+  assert.match(calls[1].url, /\/namespaces$/);
+});
+
+test('cli：config set --string 强制字符串写入且不影响缺参校验', async t => {
+  seedDev();
+  const calls = fetchStub(
+    t,
+    fileNsHandler({ format: 'yml', items: [{ id: 1, key: 'content', value: 'a: 0\n' }] })
+  );
+  const res = await runCli(['config', 'set', 'app', 'a', '123', '--string']);
+  assert.equal(res.stdout, '字段 "a" 已更新\n');
+  assert.equal(res.exitCode, undefined);
+  assert.equal(JSON.parse(calls[2].body).value, 'a: "123"\n');
+
+  const missing = await runCli(['config', 'set', 'app', 'k', '--string']);
+  assert.equal(missing.stderr, '缺少参数。用法: config set <appId> <key> <value>\n');
+  assert.equal(missing.exitCode, 1);
+});
+
+test('cli：config 帮助含字段路径措辞与 --string', async () => {
+  const help = await runCli(['config']);
+  assert.match(help.stdout, /config get <appId> <key\|path>/);
+  assert.match(help.stdout, /config set <appId> <key\|path> <value>/);
+  assert.match(help.stdout, /--string/);
 });
 
 test('cli：config get 未命中时 exitCode=1', async t => {

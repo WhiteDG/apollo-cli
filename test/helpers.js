@@ -129,6 +129,17 @@ export function redirectResponse(location, cookies = []) {
   return new Response(null, { status: 302, headers });
 }
 
+/** 文件型命名空间桩工厂：按 URL 后缀区分命名空间列表与 items 请求 */
+export function fileNsHandler({ format = 'yml', items = [], namespace = 'application' } = {}) {
+  return record => {
+    if (record.url.endsWith('/namespaces')) {
+      return jsonResponse([{ baseInfo: { namespaceName: namespace }, format }]);
+    }
+    if (record.method === 'GET') return jsonResponse(items);
+    return jsonResponse(null);
+  };
+}
+
 export function writeJSONFile(file, obj) {
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, JSON.stringify(obj, null, 2) + '\n', 'utf8');

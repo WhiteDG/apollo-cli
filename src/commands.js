@@ -5,6 +5,7 @@ import {
 } from './store.js';
 import { login as authLogin, resolveCredentials, ensureSession, envVarPrefix } from './auth.js';
 import * as api from './api.js';
+import * as filecontent from './filecontent.js';
 import { output } from './output.js';
 import { createInterface } from 'node:readline';
 
@@ -141,13 +142,28 @@ export async function nsList(appId, opts) {
       命名空间: ns.baseInfo?.namespaceName || ns.namespaceName || '-',
       格式: ns.format || 'properties',
       类型: ns.isPublic ? '公共' : '私有',
-      配置数: ns.itemModifiedCnt ?? '-'
+      配置数: ns.items?.length ?? '-'
     }));
     output(rows, opts);
   } catch (e) { fatal(e); }
 }
 
 // ---- config ----
+
+/**
+ * 文件型命名空间判定需要 ns 的 format 字段：仅当 items 为空或恰有单个 content
+ * 条目时才多查一次命名空间列表消歧；其余场景零额外请求，properties 行为不变。
+ */
+async function resolveFieldFormat(appId, ctx, items, cookie) {
+  if (!filecontent.isAmbiguousNamespaceItems(items)) return null;
+  const nsList = await api.getNamespaces(appId, ctx.portalEnv, ctx.cluster, {
+    envName: ctx.envName,
+    baseUrl: ctx.baseUrl,
+    cookie
+  });
+  const format = filecontent.pickNamespaceFormat(nsList, ctx.namespace);
+  return filecontent.isFileFormat(format) ? format : null;
+}
 
 export async function configList(appId, opts) {
   const ctx = envCtx(null, opts);
@@ -175,7 +191,19 @@ export async function configGet(appId, key, opts) {
   try {
     const cookie = await ensureSession(ctx.envName, ctx.baseUrl, opts);
     const data = await api.getItems(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
-    const item = Array.isArray(data) ? data.find(i => i.key === key) : null;
+    const items = Array.isArray(data) ? data : [];
+    const format = await resolveFieldFormat(appId, ctx, items, cookie);
+    if (format) {
+      const contentItem = items.find(i => i.key === filecontent.CONTENT_KEY);
+      if (!contentItem) {
+        die(`字段 "${key}" 不存在（配置项 "${filecontent.CONTENT_KEY}" 尚未创建）`);
+      }
+      const { found, value } = filecontent.getField(contentItem.value, format, key);
+      if (!found) die(`字段 "${key}" 不存在`);
+      process.stdout.write(filecontent.renderFieldValue(value, format, opts));
+      return;
+    }
+    const item = items.find(i => i.key === key);
     if (!item) {
       die(`配置项 "${key}" 不存在`);
     }
@@ -196,6 +224,35 @@ export async function configSet(appId, key, value, opts) {
     const data = await api.getItems(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
     const session = loadSession()[ctx.envName];
     const username = session?.username || '';
+    const items = Array.isArray(data) ? data : [];
+    const format = await resolveFieldFormat(appId, ctx, items, cookie);
+
+    if (format) {
+      const existing = items.find(i => i.key === filecontent.CONTENT_KEY);
+      const parsed = filecontent.parseFieldValue(value, { string: !!opts.string });
+      const prior = filecontent.getField(existing?.value ?? '', format, key);
+      const next = filecontent.setField(existing?.value ?? '', format, key, parsed);
+      if (existing) {
+        await api.updateItem(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, {
+          id: existing.id,
+          key: filecontent.CONTENT_KEY,
+          value: next,
+          comment: opts.comment || existing.comment || '',
+          dataChangeLastModifiedBy: username,
+          dataChangeLastModifiedTime: new Date().toISOString()
+        }, { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
+        process.stdout.write(`字段 "${key}" 已${prior.found ? '更新' : '新增'}\n`);
+      } else {
+        await api.createItem(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, {
+          key: filecontent.CONTENT_KEY,
+          value: next,
+          comment: opts.comment || '',
+          dataChangeCreatedBy: username
+        }, { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
+        process.stdout.write(`字段 "${key}" 已新增（已创建配置项 "${filecontent.CONTENT_KEY}"）\n`);
+      }
+      return;
+    }
 
     if (Array.isArray(data)) {
       const existing = data.find(i => i.key === key);

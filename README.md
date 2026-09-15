@@ -4,12 +4,13 @@ Apollo 配置中心命令行工具。通过 Portal 方式登录管理配置项�
 
 ## 环境要求
 
-- Node.js >= 21（零依赖，仅用内置 fetch / parseArgs）
+- Node.js >= 21（运行时依赖仅 `yaml`，用于文件型命名空间字段读写）
 
 ## 安装
 
 ```bash
-npm link
+pnpm install        # 安装依赖
+pnpm link --global  # 链接后可直接使用 apollo-cli
 # 或直接运行
 node bin/apollo-cli.js --help
 ```
@@ -87,6 +88,31 @@ apollo-cli config publish MyApp --title "v2.3 发布"
 apollo-cli config releases MyApp --limit 5
 ```
 
+### 5. 文件型命名空间（yml/yaml/json）字段读写
+
+文件型命名空间在 Apollo 中整份内容存为单个 `content` 配置项。此时 `config get/set`
+的 key 参数按**字段路径**解释（properties 命名空间行为不变）：
+
+```bash
+# 读取字段（标量原样输出；--json 输出 JSON 编码）
+apollo-cli config get MyApp server.port -n app.yml
+apollo-cli config get MyApp 'servers[0].host' -n app.yml --json
+
+# 写入字段（值按单行 YAML 解析：123 → 数字、true → 布尔、{}/[] 或 a: b → 结构；含换行的值按原样字符串）
+apollo-cli config set MyApp server.port 8080 -n app.yml
+apollo-cli config set MyApp flags.enabled true -n app.yml
+
+# 需要按字符串写入时加 --string（含 [] 的路径建议加引号，避免 zsh glob 报错）
+apollo-cli config set MyApp 'server.ports[0]' 8080 -n app.yml --string
+```
+
+- 路径语法：`a.b[0].c`（`.` 分段；`[n]` 为数组下标，也可出现在最开头，如 `[0].a`）；下标只允许非负整数
+- 限制：键名含 `.`/`[`/`]` 的字段无法寻址；不支持多文档 YAML（`---`）；数组起始下标不为 0 时无法新建数组；JSON 命名空间不支持写入 `__proto__` 键
+- 保真：标量替换保留注释与引号风格（纯注释内容首次写入也不丢）；将某字段整体替换为对象/数组时，原子树内的注释会丢失
+- 行尾与 BOM：原文有 BOM/CRLF 时写回还原；YAML 会补上缺失的结尾换行（JSON 按原文有无换行保持）
+- 写入的是整份 `content`，与普通配置一样需 `config publish` 才会生效
+- 查看整份文件内容用 `apollo-cli config ls MyApp -n app.yml --json`；注意文件模式下 `config get MyApp content` 是取文档中的 `content` 字段，不再是整份内容
+
 ## 配置存储
 
 | 文件 | 位置 | 说明 |
@@ -125,8 +151,8 @@ apollo-cli env rm <name>
 apollo-cli env default <name>
 apollo-cli ns ls <appId>
 apollo-cli config ls <appId> [-n ns]
-apollo-cli config get <appId> <key> [-n ns]
-apollo-cli config set <appId> <key> <value> [-n ns] [--comment text]
+apollo-cli config get <appId> <key|path> [-n ns]
+apollo-cli config set <appId> <key|path> <value> [-n ns] [--comment text] [--string]
 apollo-cli config rm <appId> <key> [-n ns] [--yes]
 apollo-cli config publish <appId> [-n ns] [--title t] [--comment c] [--emergency]
 apollo-cli config releases <appId> [-n ns] [--limit n]

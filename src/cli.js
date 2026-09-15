@@ -25,9 +25,10 @@ const HELP = `apollo-cli — Apollo 配置中心命令行工具
 
 配置管理:
   config ls <appId>            列出配置项
-  config get <appId> <key>     获取单个配置项
-  config set <appId> <key> <value>  新增或更新配置项
+  config get <appId> <key|path>     获取配置项；文件型命名空间（yml/yaml/json）按字段路径，如 a.b[0].c
+  config set <appId> <key|path> <value>  新增或更新；文件型命名空间按字段写入
     --comment <text>
+    --string                       值按字符串写入（不做 YAML 标量/结构解析）
   config rm <appId> <key>      删除配置项（交互确认）
     --yes                          跳过确认
   config publish <appId>       发布配置
@@ -48,6 +49,7 @@ const HELP = `apollo-cli — Apollo 配置中心命令行工具
   apollo-cli login fat
   apollo-cli config ls MyApp -n application
   apollo-cli config set MyApp timeout 5000 --comment "update timeout"
+  apollo-cli config set MyApp 'server.ports[0]' 8080 -n app.yml   # 文件型命名空间按字段路径（含 [] 的路径建议加引号，避免 shell glob）
   apollo-cli config publish MyApp --title "v1.0.1" --emergency
 `;
 
@@ -165,8 +167,8 @@ function handleConfig(args) {
   if (args.length === 0 || args[0] === '--help' || args[0] === '-h') {
     helpText(`用法:
   apollo-cli config ls <appId> [-n ns] [--json]
-  apollo-cli config get <appId> <key> [-n ns] [--json]
-  apollo-cli config set <appId> <key> <value> [-n ns] [--comment text]
+  apollo-cli config get <appId> <key|path> [-n ns] [--json]
+  apollo-cli config set <appId> <key|path> <value> [-n ns] [--comment text] [--string]
   apollo-cli config rm <appId> <key> [-n ns] [--yes]
   apollo-cli config publish <appId> [-n ns] [--title t] [--comment c] [--emergency]
   apollo-cli config releases <appId> [-n ns] [--limit n] [--json]\n`);
@@ -184,7 +186,7 @@ function handleConfig(args) {
       return runCommands.configGet(p.positionals[0], p.positionals[1], p.values);
     }
     case 'set': {
-      const p = parseArgs({ args: args.slice(1), ...parseCfg({ comment: { type: 'string' } }) });
+      const p = parseArgs({ args: args.slice(1), ...parseCfg({ comment: { type: 'string' }, string: { type: 'boolean', default: false } }) });
       pos(p, 3, 'config set <appId> <key> <value>');
       return runCommands.configSet(p.positionals[0], p.positionals[1], p.positionals[2], p.values);
     }
