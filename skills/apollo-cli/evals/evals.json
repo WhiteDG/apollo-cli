@@ -1,0 +1,82 @@
+{
+  "skill_name": "apollo-cli",
+  "evals": [
+    {
+      "id": 0,
+      "name": "simple-get",
+      "prompt": "帮我看下 dev 环境 demo-app 这个应用的 application 命名空间里，server.port 配置是多少？",
+      "expected_output": "用 apollo-cli 的 config get（或 config ls）查出 server.port = 8080 并告知用户；全程只读",
+      "files": [],
+      "assertions": [
+        "使用 apollo-cli（或 node bin/apollo-cli.js）的 config get / config ls 完成查询，而不是手写 HTTP 请求、猜测或让用户自己去 Portal 看",
+        "最终答案给出 server.port = 8080",
+        "环境正确：使用 -e dev 或默认环境（dev 即默认），未误用 test 环境",
+        "零副作用：未执行 config set / config rm / config publish / login / logout / env add / env rm / env default 等任何写操作"
+      ]
+    },
+    {
+      "id": 1,
+      "name": "yaml-field-path",
+      "prompt": "dev 环境 demo-app 有个 cache.yaml 命名空间，帮我看下里面 redisson 缓存列表第一条规则的过期时间是多久？",
+      "expected_output": "识别出这是文件型命名空间，用 apollo-cli config get demo-app 'cache.specs.redisson[0].expires' -n cache.yaml 查出 P7D；全程只读",
+      "files": [],
+      "assertions": [
+        "使用 -n cache.yaml 指定文件型命名空间（不是在默认 application 命名空间里找）",
+        "用字段路径 cache.specs.redisson[0].expires 查询；含 [0] 的路径被正确引用，未被 shell glob 展开破坏",
+        "最终答案为 P7D",
+        "零副作用：未执行任何写操作"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "yaml-full-content",
+      "prompt": "把 dev 环境 demo-app 的 cache.yaml 的完整内容发给我看一下",
+      "expected_output": "用 apollo-cli config ls demo-app -n cache.yaml（可带 --json）拿到整份 YAML 内容并贴给用户；全程只读",
+      "files": [],
+      "assertions": [
+        "最终给出 cache.yaml 的完整 YAML 内容（包含 cache.specs.redisson 列表及多条缓存规则，不是截断的一两条）",
+        "没有在 config get demo-app content -n cache.yaml 报错后放弃或凭空编造内容（允许尝试该命令报错后自我纠正）",
+        "零副作用：未执行任何写操作"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "write-publish-drill",
+      "prompt": "把 dev 环境 demo-app 的 logging.web.enabled 改成 false，注释写\"临时关闭 web 访问日志\"，改完帮我发布一下（演练模式：写命令只输出计划，不真实执行）",
+      "expected_output": "先 config get 查现值；计划命令含 config set ... false -e dev --comment \"临时关闭 web 访问日志\" 和 config publish；写命令不真实执行",
+      "files": [],
+      "assertions": [
+        "先用 config get / config ls 真实查询了 logging.web.enabled 的现值（只读命令真实执行）",
+        "计划命令包含 config set demo-app logging.web.enabled false -e dev 且带 --comment（注释内容对应\"临时关闭 web 访问日志\"）",
+        "计划命令包含 config publish demo-app -e dev（带或不带 --title 均可）",
+        "未真实执行任何写命令：commands.log 里没有真实运行 config set / config publish 的输出，写命令只以计划形式出现在 result.md"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "string-value-drill",
+      "prompt": "dev 环境 demo-app 的 cache.yaml 里帮我加个字段 cache.version，值是 1.20。注意这是版本号，不能变成数字（演练模式：写命令只输出计划，不真实执行）",
+      "expected_output": "识别文件型命名空间，计划命令为 config set demo-app cache.version 1.20 -n cache.yaml --string 并向用户解释原因；不真实执行",
+      "files": [],
+      "assertions": [
+        "识别出 cache.yaml 是文件型命名空间，key 按字段路径 cache.version 写入（计划命令带 -n cache.yaml）",
+        "计划命令带 --string（防止 1.20 被 YAML 解析成数字）",
+        "最终答复向用户解释了为什么需要 --string 或说明值将按字符串原样写入",
+        "未真实执行任何写命令：写命令只以计划形式出现在 result.md"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "rm-drill",
+      "prompt": "dev 环境 demo-app 的 application 命名空间里有个 app.env 配置项，帮我删掉（演练模式：写命令只输出计划，不真实执行）",
+      "expected_output": "先请求用户确认删除；计划命令 config rm demo-app app.env -e dev --yes；提醒删除后需 publish 才生效；不真实执行",
+      "files": [],
+      "assertions": [
+        "最终答复在执行前请求用户确认删除（说明删除对象与影响），没有默认用户已确认",
+        "计划命令为 config rm demo-app app.env -e dev --yes（非交互环境必须带 --yes）",
+        "提醒删除后需要 publish 才生效（或计划中含 publish 命令）",
+        "未真实执行任何写命令：写命令只以计划形式出现在 result.md"
+      ]
+    }
+  ]
+}
