@@ -1,5 +1,8 @@
 import { parseArgs } from 'node:util';
+import { readFileSync } from 'node:fs';
 import * as runCommands from './commands.js';
+
+const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 const HELP = `apollo-cli — Apollo 配置中心命令行工具
 
@@ -43,6 +46,7 @@ const HELP = `apollo-cli — Apollo 配置中心命令行工具
   --cluster <name>              集群，默认读取环境配置（未配置则 "default"）
   -n, --namespace <name>        命名空间，默认 "application"
   --json                        输出 JSON 格式
+  -V, --version                 显示版本号
 
 示例:
   apollo-cli env add fat --base-url http://portal.example.com:8070 --default
@@ -92,6 +96,10 @@ export async function run() {
 async function main(raw) {
   const cmd = raw[0];
   if (cmd === undefined || cmd === '--help' || cmd === '-h') printHelp();
+  if (cmd === '--version' || cmd === '-V') {
+    process.stdout.write(`apollo-cli ${pkg.version}\n`);
+    return;
+  }
 
   switch (cmd) {
     case 'login': {

@@ -65,6 +65,16 @@ test('cli：无参与 --help/-h 输出帮助且不置 exitCode', async () => {
   }
 });
 
+test('cli：--version/-V 输出版本号且不置 exitCode', async () => {
+  const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  for (const args of [['--version'], ['-V']]) {
+    const res = await runCli(args);
+    assert.equal(res.stdout, `apollo-cli ${version}\n`, `args=${args.join(' ')}`);
+    assert.equal(res.stderr, '');
+    assert.equal(res.exitCode, undefined, `args=${args.join(' ')} 不应设置 exitCode`);
+  }
+});
+
 test('cli：未知命令报错并置 exitCode=1', async () => {
   const res = await runCli(['foo']);
   assert.equal(res.stdout, '');

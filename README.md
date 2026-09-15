@@ -139,10 +139,12 @@ apollo-cli config set MyApp 'server.ports[0]' 8080 -n app.yml --string
 | `--cluster <name>` | | 集群名，默认读取环境配置的 cluster |
 | `--namespace <name>` | `-n` | 命名空间，默认 "application" |
 | `--json` | | JSON 格式输出 |
+| `--version` | `-V` | 显示版本号 |
 
 ## 命令参考
 
 ```
+apollo-cli --version
 apollo-cli login [env] [--username u] [--password p]
 apollo-cli logout [env]
 apollo-cli env list
