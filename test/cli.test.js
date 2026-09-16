@@ -11,6 +11,7 @@ import {
   redirectResponse,
   seedUserConfig,
   seedSession,
+  setStdinTty,
   fileNsHandler
 } from './helpers.js';
 
@@ -182,11 +183,103 @@ test('cli：--limit 必须是正整数', async () => {
   assert.equal(nan.exitCode, 1);
 });
 
-test('cli：未知选项报错（只锁 --bogus 与退出码，英文文案随 Node 版本可变）', async () => {
+test('cli：未知选项报错中文化并置 exitCode=1', async () => {
   const res = await runCli(['env', 'list', '--bogus']);
-  assert.match(res.stderr, /--bogus/);
-  assert.notEqual(res.stderr, '');
+  assert.match(res.stderr, /^未知选项 '--bogus'/);
   assert.equal(res.exitCode, 1);
+
+  const missingValue = await runCli(['env', 'list', '-e']);
+  assert.match(missingValue.stderr, /^选项 '-e, --env .*缺少参数值/);
+  assert.equal(missingValue.exitCode, 1);
+
+  const takesNoArg = await runCli(['env', 'list', '--json=1']);
+  assert.match(takesNoArg.stderr, /^选项 '--json' 不接受参数值/);
+  assert.equal(takesNoArg.exitCode, 1);
+});
+
+test('cli：全局选项前置（--json/-e 在命令之前）', async t => {
+  seedUserConfig(iso.home, {
+    default: 'dev',
+    environments: { dev: { baseUrl: portal, portalEnv: 'DEV' } }
+  });
+  seedSession(iso.home, 'dev', { baseUrl: portal, cookie: 'c', username: 'alice', savedAt: 1 });
+  const calls = fetchStub(t, () => jsonResponse([{ key: 'k', value: 'v' }]));
+  const res = await runCli(['--json', '-e', 'dev', 'config', 'get', 'app', 'k']);
+  assert.equal(res.exitCode, undefined);
+  assert.deepEqual(JSON.parse(res.stdout), [{ key: 'k', value: 'v', 注释: '', 修改人: '', 修改时间: '' }]);
+  assert.match(calls[0].url, /\/envs\/DEV\/clusters\/default\/namespaces\/application\/items$/);
+});
+
+test('cli：前置全局选项与 -- 混用不被吞（回归：-e/--json 静默失效）', async t => {
+  seedUserConfig(iso.home, {
+    default: 'other',
+    environments: {
+      other: { baseUrl: 'http://other.test', portalEnv: 'OTHER' },
+      dev: { baseUrl: portal, portalEnv: 'DEV' }
+    }
+  });
+  seedSession(iso.home, 'dev', { baseUrl: portal, cookie: 'c', username: 'alice', savedAt: 1 });
+  const calls = fetchStub(t, record =>
+    record.method === 'GET' ? jsonResponse([{ id: 1, key: 'k', value: 'old' }]) : jsonResponse(null)
+  );
+  const res = await runCli(['-e', 'dev', '--json', 'config', 'set', 'app', 'k', '--', '-1']);
+  assert.equal(res.exitCode, undefined);
+  const put = calls.find(c => c.method === 'PUT');
+  assert.ok(put, '应发生 PUT');
+  assert.match(put.url, /envs\/DEV\//, '-e 必须生效，不能落到默认环境');
+  assert.equal(JSON.parse(put.body).value, '-1', '-- 后的负数值应作为位置参数写入');
+  assert.equal(JSON.parse(res.stdout).action, 'update', '--json 不能被 -- 吞掉');
+});
+
+test('cli：仅全局选项或裸选项时报缺少命令/未知选项', async () => {
+  const bare = await runCli(['--json']);
+  assert.equal(bare.stderr, '缺少命令。可用命令: login, logout, env, ns, config\n');
+  assert.equal(bare.exitCode, 1);
+
+  const bogus = await runCli(['--bogus']);
+  assert.match(bogus.stderr, /^未知选项 '--bogus'/);
+  assert.equal(bogus.exitCode, 1);
+});
+
+test('cli：config set --dry-run 端到端（只读并输出计划）', async t => {
+  seedDev();
+  const calls = fetchStub(t, record =>
+    record.method === 'GET' ? jsonResponse([{ id: 7, key: 'k', value: 'old' }]) : jsonResponse(null)
+  );
+  const res = await runCli(['config', 'set', 'app', 'k', 'newv', '--dry-run']);
+  assert.equal(res.stdout, '[dry-run] 将更新配置项 "k"（未执行；生效需 config publish）\n');
+  assert.equal(res.exitCode, undefined);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].method, 'GET');
+});
+
+test('cli：config rm 非交互未带 --yes 时报错并置 exitCode=1', async t => {
+  seedDev();
+  fetchStub(t, () => jsonResponse([{ id: 9, key: 'k', value: 'v' }]));
+  const restore = setStdinTty(false);
+  try {
+    const res = await runCli(['config', 'rm', 'app', 'k']);
+    assert.equal(res.stderr, '非交互环境（stdin 不是终端），确认删除请使用 --yes\n');
+    assert.equal(res.exitCode, 1);
+  } finally {
+    restore();
+  }
+});
+
+test('cli：config set --json 输出结构化变更结果', async t => {
+  seedDev();
+  fetchStub(t, record =>
+    record.method === 'GET' ? jsonResponse([{ id: 7, key: 'k', value: 'old' }]) : jsonResponse(null)
+  );
+  const res = await runCli(['config', 'set', 'app', 'k', 'newv', '--json']);
+  assert.deepEqual(JSON.parse(res.stdout), {
+    action: 'update',
+    key: 'k',
+    namespace: 'application',
+    value: 'newv',
+    needsPublish: true
+  });
+  assert.equal(res.exitCode, undefined);
 });
 
 test('cli：-e/-n 透传到目标环境与命名空间', async t => {
@@ -227,7 +320,7 @@ test('cli：config set --string 强制字符串写入且不影响缺参校验', 
     fileNsHandler({ format: 'yml', items: [{ id: 1, key: 'content', value: 'a: 0\n' }] })
   );
   const res = await runCli(['config', 'set', 'app', 'a', '123', '--string']);
-  assert.equal(res.stdout, '字段 "a" 已更新\n');
+  assert.equal(res.stdout, '字段 "a" 已更新（需 config publish 才生效）\n');
   assert.equal(res.exitCode, undefined);
   assert.equal(JSON.parse(calls[2].body).value, 'a: "123"\n');
 
@@ -236,11 +329,12 @@ test('cli：config set --string 强制字符串写入且不影响缺参校验', 
   assert.equal(missing.exitCode, 1);
 });
 
-test('cli：config 帮助含字段路径措辞与 --string', async () => {
+test('cli：config 帮助含字段路径措辞、--string 与 --dry-run', async () => {
   const help = await runCli(['config']);
   assert.match(help.stdout, /config get <appId> <key\|path>/);
   assert.match(help.stdout, /config set <appId> <key\|path> <value>/);
   assert.match(help.stdout, /--string/);
+  assert.match(help.stdout, /--dry-run/);
 });
 
 test('cli：config get 未命中时 exitCode=1', async t => {

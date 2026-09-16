@@ -22,19 +22,19 @@ apollo-cli env list                         列出环境
 apollo-cli ns ls <appId>                    列出命名空间（含格式 properties/yml/json）
 apollo-cli config ls <appId> [-n ns]        列出配置项
 apollo-cli config get <appId> <key> [-n ns] 获取单个配置项
-apollo-cli config set <appId> <key> <value> [-n ns] [--comment 说明] [--string]
-apollo-cli config rm <appId> <key> [-n ns] [--yes]
-apollo-cli config publish <appId> [-n ns] [--title 标题] [--comment 说明] [--emergency]
+apollo-cli config set <appId> <key> <value> [-n ns] [--comment 说明] [--string] [--dry-run]
+apollo-cli config rm <appId> <key> [-n ns] [--yes] [--dry-run]
+apollo-cli config publish <appId> [-n ns] [--title 标题] [--comment 说明] [--emergency] [--dry-run]
 apollo-cli config releases <appId> [-n ns] [--limit n]
 ```
 
-全局选项：`-e/--env` 环境、`--cluster` 集群、`-n/--namespace` 命名空间（默认 `application`）、`--json` 输出 JSON（需要解析输出时用）。
+全局选项：`-e/--env` 环境、`--cluster` 集群、`-n/--namespace` 命名空间（默认 `application`）、`--json` 输出 JSON（读写命令都支持，需要解析输出或确认写结果时用）。全局选项放在子命令前或后都可以。
 
 ## 关键行为（容易踩坑的地方）
 
 1. **set / rm 只改草稿，publish 才生效。** 修改后告知用户"需要 publish 才生效"并询问是否发布；用户一开始就说"改完发布"时才连着执行。用户问"为什么改了没生效"时，先 `config releases` 看最近一次发布时间是否早于修改时间。
 
-2. **写操作影响的是共享的配置中心，先确认再执行。** 执行 set/rm/publish 前，核对环境（`-e`）、appId、命名空间是否与用户意图一致；对生产类环境（prod/prd 等）的写操作和一切 `config rm`，必须先得到用户明确确认。`config rm` 在非交互终端必须带 `--yes`，否则会报错或挂起。
+2. **写操作影响的是共享的配置中心，先确认再执行。** 执行 set/rm/publish 前，核对环境（`-e`）、appId、命名空间是否与用户意图一致；对生产类环境（prod/prd 等）的写操作和一切 `config rm`，必须先得到用户明确确认。需要先让用户看变更计划时，加 `--dry-run`（set/rm/publish 均支持）：会读取现状并输出计划，不做任何写入。`config rm` 在非交互终端必须带 `--yes`，否则会立即报错（不会挂起）。
 
 3. **文件型命名空间（yml/yaml/json）的 key 是字段路径，不是配置项名。** 这类命名空间整份内容存在单个 `content` 配置项里，`config get/set` 的 key 按 `a.b[0].c` 路径解释（`-n app.yml`）。要点：
    - 含 `[` `]` 的路径一律加单引号（如 `'servers[0].host'`），防止 shell 按 glob 展开。

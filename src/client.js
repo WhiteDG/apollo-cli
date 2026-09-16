@@ -1,4 +1,5 @@
 import { reLogin, envVarPrefix } from './auth.js';
+import { fetchWithTimeout, netError } from './http.js';
 
 export async function portalRequest(method, pathname, opts = {}) {
   const { envName, baseUrl, body, cookie: suppliedCookie } = opts;
@@ -13,15 +14,14 @@ export async function portalRequest(method, pathname, opts = {}) {
       headers['content-type'] = 'application/json;charset=UTF-8';
     }
     try {
-      return await fetch(url, {
+      return await fetchWithTimeout(url, {
         method,
         redirect: 'manual',
         headers,
         body: body && method !== 'GET' && method !== 'DELETE' ? JSON.stringify(body) : undefined
       });
     } catch (e) {
-      const cause = e.cause?.code || e.cause?.message || '';
-      throw new Error(`无法连接 ${url}${cause ? `（${cause}）` : ''}`);
+      throw new Error(netError(e, url));
     }
   }
 

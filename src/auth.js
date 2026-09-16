@@ -1,5 +1,6 @@
 import { loadDotEnv } from './dotenv.js';
 import { loadSession, saveSession } from './store.js';
+import { fetchWithTimeout, netError } from './http.js';
 
 export function envVarPrefix(envName) {
   return `APOLLO_${envName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}_`;
@@ -77,7 +78,7 @@ export async function login(envName, creds, baseUrl) {
 
   let resp;
   try {
-    resp = await fetch(`${baseUrl}/signin`, {
+    resp = await fetchWithTimeout(`${baseUrl}/signin`, {
       method: 'POST',
       redirect: 'manual',
       headers: {
@@ -90,8 +91,7 @@ export async function login(envName, creds, baseUrl) {
       body
     });
   } catch (e) {
-    const cause = e.cause?.code || e.cause?.message || '';
-    throw new Error(`无法连接 ${baseUrl}${cause ? `（${cause}）` : ''}`);
+    throw new Error(netError(e, baseUrl));
   }
 
   const cookie = extractCookie(resp.headers);
@@ -107,13 +107,12 @@ export async function login(envName, creds, baseUrl) {
   // Verify: try accessing a protected page
   let verifyResp;
   try {
-    verifyResp = await fetch(`${baseUrl}/apps`, {
+    verifyResp = await fetchWithTimeout(`${baseUrl}/apps`, {
       redirect: 'manual',
       headers: { cookie, accept: 'text/html,*/*' }
     });
   } catch (e) {
-    const cause = e.cause?.code || e.cause?.message || '';
-    throw new Error(`无法连接 ${baseUrl}（验证登录状态失败${cause ? `：${cause}` : ''}）`);
+    throw new Error(`${netError(e, baseUrl)}（验证登录状态失败）`);
   }
 
   if (verifyResp.status === 302 && (verifyResp.headers.get('location') || '').includes('/signin')) {

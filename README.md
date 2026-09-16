@@ -133,13 +133,24 @@ apollo-cli config set MyApp 'server.ports[0]' 8080 -n app.yml --string
 
 ## 全局选项
 
+全局选项可放在子命令前或子命令后（如 `apollo-cli --json config get MyApp timeout -e fat`）。
+
 | 选项 | 简写 | 说明 |
 |---|---|---|
 | `--env <name>` | `-e` | CLI 环境名（优先级高于 APOLLO_ENV） |
 | `--cluster <name>` | | 集群名，默认读取环境配置的 cluster |
 | `--namespace <name>` | `-n` | 命名空间，默认 "application" |
-| `--json` | | JSON 格式输出 |
+| `--json` | | JSON 格式输出（读写命令均支持） |
 | `--version` | `-V` | 显示版本号 |
+
+## 自动化 / AI Agent 使用
+
+- 退出码：成功为 0，失败为 1；错误信息统一写 stderr，stdout 只放业务输出，`--json` 时 stdout 是合法 JSON。
+- 所有读写命令都支持 `--json`：读命令输出查询结果；写命令输出变更结果，如 `config set` 返回 `{action, key, namespace, value, needsPublish}`，`config publish` 返回 `releaseId`。
+- 写命令（`config set/rm/publish`）支持 `--dry-run` 预演：读取现状并输出将要执行的变更计划，不做任何写入。
+- 写操作只改草稿，需 `config publish` 才生效；`config set/rm` 的成功输出与 JSON 里的 `needsPublish` 都会提示这一点。
+- 非交互环境（stdin 不是终端）下 `config rm` 未带 `--yes` 会立即报错，不会挂起等待输入；不支持通过管道喂 `y` 确认（如 `echo y | apollo-cli config rm ...`），脚本请显式使用 `--yes`。
+- 网络请求默认 30s 超时，超时与连接失败都会给出明确报错。
 
 ## 命令参考
 
@@ -154,8 +165,8 @@ apollo-cli env default <name>
 apollo-cli ns ls <appId>
 apollo-cli config ls <appId> [-n ns]
 apollo-cli config get <appId> <key|path> [-n ns]
-apollo-cli config set <appId> <key|path> <value> [-n ns] [--comment text] [--string]
-apollo-cli config rm <appId> <key> [-n ns] [--yes]
-apollo-cli config publish <appId> [-n ns] [--title t] [--comment c] [--emergency]
+apollo-cli config set <appId> <key|path> <value> [-n ns] [--comment text] [--string] [--dry-run]
+apollo-cli config rm <appId> <key> [-n ns] [--yes] [--dry-run]
+apollo-cli config publish <appId> [-n ns] [--title t] [--comment c] [--emergency] [--dry-run]
 apollo-cli config releases <appId> [-n ns] [--limit n]
 ```

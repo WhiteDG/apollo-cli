@@ -214,6 +214,18 @@ test('portalRequest：网络错误无 cause 时省略括号', async t => {
   });
 });
 
+test('portalRequest：请求超时带超时文案', async t => {
+  fetchStub(t, () => {
+    const err = new Error('timed out');
+    err.name = 'TimeoutError';
+    throw err;
+  });
+  await assert.rejects(
+    () => client.portalJSON('GET', '/apps/x', opts),
+    /请求超时（30s 无响应）: http:\/\/portal.test\/apps\/x/
+  );
+});
+
 // ---- body/content-type 规则 ----
 
 test('portalRequest：GET/DELETE 带对象 body 时不发送 body 与 content-type', async t => {

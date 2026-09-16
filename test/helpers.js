@@ -67,6 +67,17 @@ export function setEnv(vars) {
   };
 }
 
+/** 覆写 process.stdin.isTTY（测试 config rm 非交互分支），返回恢复函数 */
+export function setStdinTty(value) {
+  const had = Object.hasOwn(process.stdin, 'isTTY');
+  const orig = process.stdin.isTTY;
+  process.stdin.isTTY = value;
+  return () => {
+    if (had) process.stdin.isTTY = orig;
+    else delete process.stdin.isTTY;
+  };
+}
+
 /**
  * 捕获 stdout/stderr。必须转发到原方法：测试 runner 用子进程 stdout
  * 传输测试结果协议，只记录不转发会导致整轮卡死。禁止改用 t.mock 打桩 stdio。

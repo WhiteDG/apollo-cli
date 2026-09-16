@@ -9,10 +9,12 @@ import {
   fetchStub,
   jsonResponse,
   emptyResponse,
+  redirectResponse,
   seedUserConfig,
   seedProjectConfig,
   seedSession,
   setEnv,
+  setStdinTty,
   writeJSONFile,
   fileNsHandler
 } from './helpers.js';
@@ -99,6 +101,16 @@ test('envAdd：--default 追加默认环境提示并写入默认值', async () =
   assert.equal(readJSON(userConfigFile).default, 'fat');
 });
 
+test('envAdd：--json 输出结构化结果', async () => {
+  const { stdout } = await withOutput(() => commands.envAdd('fat', { 'base-url': 'http://p', default: true, json: true }));
+  const data = JSON.parse(stdout);
+  assert.equal(data.name, 'fat');
+  assert.equal(data.portalEnv, 'FAT');
+  assert.equal(data.cluster, 'default');
+  assert.equal(data.default, true);
+  assert.match(data.defaultPath, /config\.json$/);
+});
+
 test('envAdd：配置文件损坏时预检抛错且不写入', async () => {
   writeJSONFile(userConfigFile, {});
   writeFileSync(userConfigFile, '{broken', 'utf8');
@@ -116,6 +128,12 @@ test('envRm：删除用户配置并清除登录状态', async () => {
   assert.equal(stdout, '环境 "dev" 已删除（从用户配置中移除）\n');
   assert.deepEqual(readJSON(userConfigFile).environments, {});
   assert.deepEqual(readJSON(sessionFile), {});
+});
+
+test('envRm：--json 输出结构化结果', async () => {
+  seedDev();
+  const { stdout } = await withOutput(() => commands.envRm('dev', { json: true }));
+  assert.deepEqual(JSON.parse(stdout), { name: 'dev', removedFrom: ['用户配置'] });
 });
 
 test('envRm：用户与项目配置同时命中', async () => {
@@ -149,11 +167,33 @@ test('envDefault：成功写入用户配置并输出路径', async () => {
   assert.equal(readJSON(userConfigFile).default, 'fat');
 });
 
+test('envDefault：--json 输出结构化结果', async () => {
+  seedUserConfig(iso.home, { environments: { fat: { baseUrl: 'http://p' } } });
+  const { stdout } = await withOutput(() => commands.envDefault('fat', { json: true }));
+  const data = JSON.parse(stdout);
+  assert.equal(data.name, 'fat');
+  assert.equal(data.scope, '用户配置');
+  assert.match(data.path, /config\.json$/);
+});
+
 test('logout：清除指定环境登录状态', async () => {
   seedDev();
   const { stdout } = await withOutput(() => commands.logout(null, {}));
   assert.equal(stdout, '已清除 dev 的登录状态\n');
   assert.deepEqual(readJSON(sessionFile), {});
+});
+
+test('logout：--json 输出结构化结果', async () => {
+  seedDev();
+  const { stdout } = await withOutput(() => commands.logout(null, { json: true }));
+  assert.deepEqual(JSON.parse(stdout), { env: 'dev' });
+});
+
+test('login：--json 输出结构化结果', async t => {
+  seedDev();
+  fetchStub(t, (record, idx) => (idx === 0 ? redirectResponse('/apps', ['JSESSIONID=cli']) : jsonResponse([])));
+  const { stdout } = await withOutput(() => commands.login(null, { username: 'u', password: 'p', json: true }));
+  assert.deepEqual(JSON.parse(stdout), { env: 'dev', baseUrl: portal, username: 'u' });
 });
 
 test('login：环境名含特殊字符时提示与实际读取一致的变量名', async () => {
@@ -262,7 +302,7 @@ test('configSet：已存在走更新（PUT + 时间戳/操作人/id）', async t
       : jsonResponse(null)
   );
   const { stdout } = await withOutput(() => commands.configSet('app', 'k', 'newv', {}));
-  assert.equal(stdout, '配置项 "k" 已更新\n');
+  assert.equal(stdout, '配置项 "k" 已更新（需 config publish 才生效）\n');
   assert.equal(calls.length, 2, '只应发生 GET + PUT 两次请求');
   assert.equal(calls[1].method, 'PUT');
   const body = JSON.parse(calls[1].body);
@@ -287,11 +327,87 @@ test('configSet：--comment 覆盖既有注释', async t => {
   assert.equal(JSON.parse(calls[1].body).comment, 'newc');
 });
 
+test('configSet：--json 输出结构化结果', async t => {
+  seedDev();
+  fetchStub(t, record =>
+    record.method === 'GET' ? jsonResponse([{ id: 7, key: 'k', value: 'old', comment: '' }]) : jsonResponse(null)
+  );
+  const { stdout } = await withOutput(() => commands.configSet('app', 'k', 'newv', { json: true }));
+  assert.deepEqual(JSON.parse(stdout), {
+    action: 'update',
+    key: 'k',
+    namespace: 'application',
+    value: 'newv',
+    needsPublish: true
+  });
+});
+
+test('configSet：--dry-run 只读不写并输出计划', async t => {
+  seedDev();
+  const calls = fetchStub(t, record =>
+    record.method === 'GET' ? jsonResponse([{ id: 7, key: 'k', value: 'old', comment: '' }]) : jsonResponse(null)
+  );
+  const { stdout } = await withOutput(() => commands.configSet('app', 'k', 'newv', { 'dry-run': true }));
+  assert.equal(stdout, '[dry-run] 将更新配置项 "k"（未执行；生效需 config publish）\n');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].method, 'GET');
+});
+
+test('configSet：新增场景 --dry-run --json 输出 create 计划', async t => {
+  seedDev();
+  const calls = fetchStub(t, () => jsonResponse([]));
+  const { stdout } = await withOutput(() => commands.configSet('app', 'k', 'v', { 'dry-run': true, json: true }));
+  const data = JSON.parse(stdout);
+  assert.equal(data.dryRun, true);
+  assert.equal(data.action, 'create');
+  assert.equal(data.key, 'k');
+  assert.equal(data.value, 'v');
+  assert.equal(data.needsPublish, true);
+  assert.ok(calls.every(c => c.method === 'GET'), 'dry-run 不应有写请求');
+});
+
+test('configSet：文件型 --dry-run 不发起写请求', async t => {
+  seedDev();
+  const calls = fetchStub(
+    t,
+    fileNsHandler({ format: 'yml', items: [{ id: 7, key: 'content', value: 'a: 1\n' }] })
+  );
+  const { stdout } = await withOutput(() =>
+    commands.configSet('app', 'a', '2', { 'dry-run': true, json: true })
+  );
+  const data = JSON.parse(stdout);
+  assert.equal(data.dryRun, true);
+  assert.equal(data.action, 'update');
+  assert.equal(data.key, 'a');
+  assert.equal(data.value, 2);
+  assert.equal(data.needsPublish, true);
+  assert.ok(calls.every(c => c.method === 'GET'), 'dry-run 不应有写请求');
+});
+
+test('configSet：文件型 content 未创建时 --dry-run 提示将创建 content', async t => {
+  seedDev();
+  const calls = fetchStub(t, fileNsHandler({ format: 'yaml', items: [] }));
+  const { stdout } = await withOutput(() => commands.configSet('app', 'a.b', '1', { 'dry-run': true }));
+  assert.equal(stdout, '[dry-run] 将新增字段 "a.b"（将创建配置项 "content"，未执行；生效需 config publish）\n');
+
+  const json = await withOutput(() => commands.configSet('app', 'a.b', '1', { 'dry-run': true, json: true }));
+  assert.deepEqual(JSON.parse(json.stdout), {
+    dryRun: true,
+    action: 'create',
+    key: 'a.b',
+    namespace: 'application',
+    value: 1,
+    needsPublish: true,
+    contentItemCreated: true
+  });
+  assert.ok(calls.every(c => c.method === 'GET'), 'dry-run 不应有写请求');
+});
+
 test('configSet：不存在走新增（POST + 创建人 + 空注释兜底）', async t => {
   seedDev();
   const calls = fetchStub(t, record => (record.method === 'GET' ? jsonResponse([]) : jsonResponse(null)));
   const { stdout } = await withOutput(() => commands.configSet('app', 'k', 'v', {}));
-  assert.equal(stdout, '配置项 "k" 已新增\n');
+  assert.equal(stdout, '配置项 "k" 已新增（需 config publish 才生效）\n');
   assert.equal(calls.length, 3, '空命名空间会多查一次格式，共 GET items + GET namespaces + POST');
   assert.equal(calls[0].method, 'GET');
   assert.equal(
@@ -332,7 +448,7 @@ test('configRm：--yes 直接删除并带 operator', async t => {
     record.method === 'GET' ? jsonResponse([{ id: 9, key: 'k', value: 'v' }]) : jsonResponse(null)
   );
   const { stdout } = await withOutput(() => commands.configRm('app', 'k', { yes: true }));
-  assert.equal(stdout, '配置项 "k" 已删除\n');
+  assert.equal(stdout, '配置项 "k" 已删除（需 config publish 才生效）\n');
   assert.equal(calls.length, 2, '只应发生 GET + DELETE 两次请求');
   assert.equal(calls[1].method, 'DELETE');
   assert.equal(
@@ -349,6 +465,44 @@ test('configRm：session 无 username 时 operator 为空', async t => {
   await withOutput(() => commands.configRm('app', 'k', { yes: true }));
   assert.match(calls[1].url, /\?operator=$/);
   assert.equal(calls.length, 2);
+});
+
+test('configRm：--json 输出结构化结果', async t => {
+  seedDev();
+  fetchStub(t, record =>
+    record.method === 'GET' ? jsonResponse([{ id: 9, key: 'k', value: 'v' }]) : jsonResponse(null)
+  );
+  const { stdout } = await withOutput(() => commands.configRm('app', 'k', { yes: true, json: true }));
+  assert.deepEqual(JSON.parse(stdout), {
+    action: 'delete',
+    key: 'k',
+    namespace: 'application',
+    needsPublish: true
+  });
+});
+
+test('configRm：--dry-run 不删除且不需要 --yes', async t => {
+  seedDev();
+  const calls = fetchStub(t, () => jsonResponse([{ id: 9, key: 'k', value: 'v' }]));
+  const { stdout } = await withOutput(() => commands.configRm('app', 'k', { 'dry-run': true }));
+  assert.equal(stdout, '[dry-run] 将删除配置项 "k"（未执行；生效需 config publish）\n');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].method, 'GET');
+});
+
+test('configRm：非 TTY 且未带 --yes 时立即报错（不挂起）', async t => {
+  seedDev();
+  const calls = fetchStub(t, () => jsonResponse([{ id: 9, key: 'k', value: 'v' }]));
+  const restore = setStdinTty(false);
+  try {
+    await assert.rejects(
+      withOutput(() => commands.configRm('app', 'k', {})),
+      /非交互环境（stdin 不是终端），确认删除请使用 --yes/
+    );
+    assert.ok(calls.every(c => c.method === 'GET'), '报错前不应发生写请求');
+  } finally {
+    restore();
+  }
 });
 
 test('configPublish：默认标题格式与 body 映射', async t => {
@@ -381,6 +535,57 @@ test('configPublish：空响应仅输出发布成功', async t => {
   fetchStub(t, () => emptyResponse(200));
   const { stdout } = await withOutput(() => commands.configPublish('app', {}));
   assert.equal(stdout, '发布成功\n');
+});
+
+test('configPublish：--json 输出 releaseId', async t => {
+  seedDev();
+  fetchStub(t, () => jsonResponse({ id: 42, releaseTitle: 'v1' }));
+  const { stdout } = await withOutput(() => commands.configPublish('app', { json: true, title: 'v1' }));
+  assert.deepEqual(JSON.parse(stdout), {
+    action: 'publish',
+    namespace: 'application',
+    releaseId: 42,
+    title: 'v1'
+  });
+});
+
+test('configPublish：--dry-run 不发请求并输出发布计划', async t => {
+  seedDev();
+  const calls = fetchStub(t, () => jsonResponse(null));
+  const { stdout } = await withOutput(() => commands.configPublish('app', { 'dry-run': true }));
+  assert.match(stdout, /^\[dry-run\] 将发布命名空间 "application"（title: apollo-cli 发布 \d{4}-\d{2}-\d{2} \d{2}:\d{2}；未执行）\n$/);
+  assert.equal(calls.length, 0, 'dry-run 不应发起任何请求');
+  assert.equal(readJSON(sessionFile).dev.cookie, 'sess-cookie', '不应改动登录状态');
+});
+
+test('configPublish：--dry-run --json 输出含 title/emergency 的计划', async t => {
+  seedDev();
+  const calls = fetchStub(t, () => jsonResponse(null));
+  const { stdout } = await withOutput(() =>
+    commands.configPublish('app', { 'dry-run': true, json: true, title: 'v1', emergency: true })
+  );
+  assert.deepEqual(JSON.parse(stdout), {
+    dryRun: true,
+    action: 'publish',
+    namespace: 'application',
+    title: 'v1',
+    comment: '',
+    emergency: true
+  });
+  assert.equal(calls.length, 0);
+});
+
+test('configPublish：--dry-run 文本包含 emergency 与 comment', async t => {
+  seedDev();
+  const calls = fetchStub(t, () => jsonResponse(null));
+  const { stdout } = await withOutput(() =>
+    commands.configPublish('app', { 'dry-run': true, emergency: true, comment: '修个 bug' })
+  );
+  assert.match(
+    stdout,
+    /^\[dry-run\] 将发布命名空间 "application"（title: apollo-cli 发布 \d{4}-\d{2}-\d{2} \d{2}:\d{2}，紧急发布，comment: 修个 bug；未执行）\n$/
+  );
+  assert.equal(calls.length, 0);
 });
 
 test('configReleases：数组响应的字段回退与 limit 进 URL', async t => {
@@ -467,7 +672,7 @@ test('configSet：文件型只改目标字段并保留注释', async t => {
     })
   );
   const { stdout } = await withOutput(() => commands.configSet('app', 'a', '9', {}));
-  assert.equal(stdout, '字段 "a" 已更新\n');
+  assert.equal(stdout, '字段 "a" 已更新（需 config publish 才生效）\n');
   assert.equal(calls.length, 3);
   assert.equal(calls[2].method, 'PUT');
   const body = JSON.parse(calls[2].body);
@@ -483,7 +688,7 @@ test('configSet：文件型字段不存在时文案为已新增', async t => {
   seedDev();
   fetchStub(t, fileNsHandler({ format: 'yml', items: [{ id: 1, key: 'content', value: 'a: 1\n' }] }));
   const { stdout } = await withOutput(() => commands.configSet('app', 'b.c', '2', {}));
-  assert.equal(stdout, '字段 "b.c" 已新增\n');
+  assert.equal(stdout, '字段 "b.c" 已新增（需 config publish 才生效）\n');
 });
 
 test('configSet：文件型类型解析与 --string', async t => {
@@ -518,7 +723,7 @@ test('configSet：文件型空命名空间创建 content 条目', async t => {
   seedDev();
   const calls = fetchStub(t, fileNsHandler({ format: 'yaml', items: [] }));
   const { stdout } = await withOutput(() => commands.configSet('app', 'a.b', '1', {}));
-  assert.equal(stdout, '字段 "a.b" 已新增（已创建配置项 "content"）\n');
+  assert.equal(stdout, '字段 "a.b" 已新增（已创建配置项 "content"，需 config publish 才生效）\n');
   assert.equal(calls.length, 3);
   assert.equal(calls[2].method, 'POST');
   assert.deepEqual(JSON.parse(calls[2].body), {
@@ -540,14 +745,14 @@ test('configSet：properties 单个 content 键不被劫持', async t => {
   };
   const calls = fetchStub(t, propsHandler);
   const updated = await withOutput(() => commands.configSet('app', 'content', '123', {}));
-  assert.equal(updated.stdout, '配置项 "content" 已更新\n');
+  assert.equal(updated.stdout, '配置项 "content" 已更新（需 config publish 才生效）\n');
   assert.equal(calls.length, 3);
   assert.equal(calls[2].method, 'PUT');
   assert.equal(JSON.parse(calls[2].body).value, '123', 'properties 值不做 YAML 解析');
 
   const calls2 = fetchStub(t, propsHandler);
   const created = await withOutput(() => commands.configSet('app', 'a.b', 'v', {}));
-  assert.equal(created.stdout, '配置项 "a.b" 已新增\n');
+  assert.equal(created.stdout, '配置项 "a.b" 已新增（需 config publish 才生效）\n');
   assert.equal(calls2.length, 3);
   assert.equal(calls2[2].method, 'POST');
   assert.equal(JSON.parse(calls2[2].body).key, 'a.b');

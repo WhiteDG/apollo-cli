@@ -202,6 +202,31 @@ test('login：请求失败抛无法连接', async t => {
   );
 });
 
+test('login：请求超时抛超时文案', async t => {
+  fetchStub(t, () => {
+    const err = new Error('timed out');
+    err.name = 'TimeoutError';
+    throw err;
+  });
+  await assert.rejects(
+    () => auth.login('dev', { username: 'u', password: 'p' }, portal),
+    /请求超时（30s 无响应）: http:\/\/portal.test/
+  );
+});
+
+test('login：校验步超时带验证失败后缀', async t => {
+  fetchStub(t, (record, idx) => {
+    if (idx === 0) return redirectResponse('/apps', ['JSESSIONID=abc']);
+    const err = new Error('timed out');
+    err.name = 'TimeoutError';
+    throw err;
+  });
+  await assert.rejects(
+    () => auth.login('dev', { username: 'u', password: 'p' }, portal),
+    /请求超时（30s 无响应）: http:\/\/portal.test（验证登录状态失败）/
+  );
+});
+
 test('login：校验步跳回 signin 抛 cookie 无效', async t => {
   fetchStub(t, (record, idx) =>
     idx === 0 ? redirectResponse('/apps', ['JSESSIONID=abc']) : redirectResponse('/signin')
@@ -229,7 +254,7 @@ test('login：校验步网络错误带 cause 文案', async t => {
   });
   await assert.rejects(
     () => auth.login('dev', { username: 'u', password: 'p' }, portal),
-    /无法连接 http:\/\/portal.test（验证登录状态失败：ENOTFOUND）/
+    /无法连接 http:\/\/portal.test（ENOTFOUND）（验证登录状态失败）/
   );
 });
 

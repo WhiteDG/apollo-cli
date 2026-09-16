@@ -17,6 +17,15 @@ function fatal(err) {
   die(err instanceof Error ? err.message : String(err));
 }
 
+/** 写命令结果：--json 输出结构化数据，否则输出人类可读文案 */
+function emit(opts, data, text) {
+  if (opts.json) {
+    process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+    return;
+  }
+  process.stdout.write(text + '\n');
+}
+
 function pickEnv(opts) {
   return opts.env || process.env.APOLLO_ENV || null;
 }
@@ -52,15 +61,15 @@ export async function login(envArg, opts) {
   }
   const cookie = await authLogin(envName, creds, baseUrl);
   saveSession(envName, { baseUrl, cookie, username: creds.username, savedAt: Date.now() });
-  process.stdout.write(`登录成功 (${envName}: ${baseUrl}) [${creds.username}]\n`);
+  emit(opts, { env: envName, baseUrl, username: creds.username }, `登录成功 (${envName}: ${baseUrl}) [${creds.username}]`);
 }
 
 // ---- logout ----
 
-export function logout(envArg, opts) {
+export function logout(envArg, opts = {}) {
   const ctx = envCtx(envArg, opts);
   clearSession(ctx.envName);
-  process.stdout.write(`已清除 ${ctx.envName} 的登录状态\n`);
+  emit(opts, { env: ctx.envName }, `已清除 ${ctx.envName} 的登录状态`);
 }
 
 // ---- env ----
@@ -100,29 +109,35 @@ export function envAdd(name, vals) {
   };
   if (vals.default) getAllEnvs(); // 预检：配置文件损坏在此抛错，避免"环境已写、默认未设"的半写入
   saveUserConfig({ environments: { [name]: data } });
-  process.stdout.write(`环境 "${name}" 已添加 (portal: ${portalEnv}, cluster: ${data.cluster})\n`);
-  if (vals.default) {
-    const { path, scope } = setDefaultEnv(name);
-    process.stdout.write(`默认环境已设为 "${name}"（已写入${scope}: ${path}）\n`);
-  }
+  let def = null;
+  if (vals.default) def = setDefaultEnv(name);
+  const text = `环境 "${name}" 已添加 (portal: ${portalEnv}, cluster: ${data.cluster})` +
+    (def ? `\n默认环境已设为 "${name}"（已写入${def.scope}: ${def.path}）` : '');
+  emit(vals, {
+    name,
+    portalEnv,
+    cluster: data.cluster,
+    default: !!vals.default,
+    ...(def ? { defaultScope: def.scope, defaultPath: def.path } : {})
+  }, text);
 }
 
-export function envRm(name) {
+export function envRm(name, opts = {}) {
   const scopes = removeEnv(name);
   if (scopes.length === 0) {
     die(`环境 "${name}" 不存在`);
   }
   clearSession(name);
-  process.stdout.write(`环境 "${name}" 已删除（从${scopes.join('、')}中移除）\n`);
+  emit(opts, { name, removedFrom: scopes }, `环境 "${name}" 已删除（从${scopes.join('、')}中移除）`);
 }
 
-export function envDefault(name) {
+export function envDefault(name, opts = {}) {
   const { envs } = getAllEnvs();
   if (!envs[name]) {
     die(`环境 "${name}" 不存在`);
   }
   const { path, scope } = setDefaultEnv(name);
-  process.stdout.write(`默认环境已设为 "${name}"（已写入${scope}: ${path}）\n`);
+  emit(opts, { name, scope, path }, `默认环境已设为 "${name}"（已写入${scope}: ${path}）`);
 }
 
 // ---- ns ----
@@ -232,6 +247,18 @@ export async function configSet(appId, key, value, opts) {
       const parsed = filecontent.parseFieldValue(value, { string: !!opts.string });
       const prior = filecontent.getField(existing?.value ?? '', format, key);
       const next = filecontent.setField(existing?.value ?? '', format, key, parsed);
+      const action = prior.found ? 'update' : 'create';
+      const base = { action, key, namespace: ctx.namespace, value: parsed, needsPublish: true };
+      if (opts['dry-run']) {
+        if (existing) {
+          emit(opts, { dryRun: true, ...base },
+            `[dry-run] 将${prior.found ? '更新' : '新增'}字段 "${key}"（未执行；生效需 config publish）`);
+        } else {
+          emit(opts, { dryRun: true, ...base, contentItemCreated: true },
+            `[dry-run] 将新增字段 "${key}"（将创建配置项 "${filecontent.CONTENT_KEY}"，未执行；生效需 config publish）`);
+        }
+        return;
+      }
       if (existing) {
         await api.updateItem(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, {
           id: existing.id,
@@ -241,7 +268,7 @@ export async function configSet(appId, key, value, opts) {
           dataChangeLastModifiedBy: username,
           dataChangeLastModifiedTime: new Date().toISOString()
         }, { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
-        process.stdout.write(`字段 "${key}" 已${prior.found ? '更新' : '新增'}\n`);
+        emit(opts, base, `字段 "${key}" 已${prior.found ? '更新' : '新增'}（需 config publish 才生效）`);
       } else {
         await api.createItem(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, {
           key: filecontent.CONTENT_KEY,
@@ -249,25 +276,30 @@ export async function configSet(appId, key, value, opts) {
           comment: opts.comment || '',
           dataChangeCreatedBy: username
         }, { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
-        process.stdout.write(`字段 "${key}" 已新增（已创建配置项 "${filecontent.CONTENT_KEY}"）\n`);
+        emit(opts, { ...base, contentItemCreated: true },
+          `字段 "${key}" 已新增（已创建配置项 "${filecontent.CONTENT_KEY}"，需 config publish 才生效）`);
       }
       return;
     }
 
-    if (Array.isArray(data)) {
-      const existing = data.find(i => i.key === key);
-      if (existing) {
-        await api.updateItem(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, {
-          id: existing.id,
-          key,
-          value,
-          comment: opts.comment || existing.comment || '',
-          dataChangeLastModifiedBy: username,
-          dataChangeLastModifiedTime: new Date().toISOString()
-        }, { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
-        process.stdout.write(`配置项 "${key}" 已更新\n`);
-        return;
-      }
+    const existing = Array.isArray(data) ? data.find(i => i.key === key) : null;
+    const base = { action: existing ? 'update' : 'create', key, namespace: ctx.namespace, value, needsPublish: true };
+    if (opts['dry-run']) {
+      emit(opts, { dryRun: true, ...base },
+        `[dry-run] 将${existing ? '更新' : '新增'}配置项 "${key}"（未执行；生效需 config publish）`);
+      return;
+    }
+    if (existing) {
+      await api.updateItem(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, {
+        id: existing.id,
+        key,
+        value,
+        comment: opts.comment || existing.comment || '',
+        dataChangeLastModifiedBy: username,
+        dataChangeLastModifiedTime: new Date().toISOString()
+      }, { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
+      emit(opts, base, `配置项 "${key}" 已更新（需 config publish 才生效）`);
+      return;
     }
     await api.createItem(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, {
       key,
@@ -275,7 +307,7 @@ export async function configSet(appId, key, value, opts) {
       comment: opts.comment || '',
       dataChangeCreatedBy: username
     }, { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
-    process.stdout.write(`配置项 "${key}" 已新增\n`);
+    emit(opts, base, `配置项 "${key}" 已新增（需 config publish 才生效）`);
   } catch (e) { fatal(e); }
 }
 
@@ -288,41 +320,65 @@ export async function configRm(appId, key, opts) {
     if (!item) {
       die(`配置项 "${key}" 不存在`);
     }
+    const base = { action: 'delete', key, namespace: ctx.namespace, needsPublish: true };
+    if (opts['dry-run']) {
+      emit(opts, { dryRun: true, ...base }, `[dry-run] 将删除配置项 "${key}"（未执行；生效需 config publish）`);
+      return;
+    }
     if (!opts.yes) {
+      if (!process.stdin.isTTY) {
+        die('非交互环境（stdin 不是终端），确认删除请使用 --yes');
+      }
       const confirmed = await promptConfirm(`确定删除 "${key}" (值: ${(item.value || '').slice(0, 50)})？[y/N] `);
       if (confirmed === null) {
         die('stdin 已关闭（非交互环境），确认删除请使用 --yes');
       }
       if (!confirmed) {
-        process.stdout.write('已取消\n');
+        emit(opts, { cancelled: true, key, namespace: ctx.namespace }, '已取消');
         return;
       }
     }
     const session = loadSession()[ctx.envName];
     await api.deleteItem(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, item.id, session?.username || '', { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
-    process.stdout.write(`配置项 "${key}" 已删除\n`);
+    emit(opts, base, `配置项 "${key}" 已删除（需 config publish 才生效）`);
   } catch (e) { fatal(e); }
 }
 
 export async function configPublish(appId, opts) {
   const ctx = envCtx(null, opts);
+  const now = new Date();
+  const defaultTitle = `apollo-cli 发布 ${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const title = opts.title || defaultTitle;
+  if (opts['dry-run']) {
+    const detail = `title: ${title}` +
+      (opts.emergency ? '，紧急发布' : '') +
+      (opts.comment ? `，comment: ${opts.comment}` : '');
+    emit(opts, {
+      dryRun: true,
+      action: 'publish',
+      namespace: ctx.namespace,
+      title,
+      comment: opts.comment || '',
+      emergency: !!opts.emergency
+    }, `[dry-run] 将发布命名空间 "${ctx.namespace}"（${detail}；未执行）`);
+    return;
+  }
   try {
     const cookie = await ensureSession(ctx.envName, ctx.baseUrl, opts);
     const session = loadSession()[ctx.envName];
     const username = session?.username || '';
-    const now = new Date();
-    const defaultTitle = `apollo-cli 发布 ${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const result = await api.publishRelease(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, {
-      title: opts.title || defaultTitle,
+      title,
       comment: opts.comment || '',
       releasedBy: username,
       emergency: opts.emergency || false
     }, { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
     if (result && result.id !== undefined) {
       const t = result.releaseTitle ? `, title: ${result.releaseTitle}` : '';
-      process.stdout.write(`发布成功 (releaseId: ${result.id}${t})\n`);
+      emit(opts, { action: 'publish', namespace: ctx.namespace, releaseId: result.id, title: result.releaseTitle || title },
+        `发布成功 (releaseId: ${result.id}${t})`);
     } else {
-      process.stdout.write('发布成功\n');
+      emit(opts, { action: 'publish', namespace: ctx.namespace, title }, '发布成功');
     }
   } catch (e) { fatal(e); }
 }
