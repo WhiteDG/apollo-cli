@@ -94,16 +94,27 @@ export function loadConfig() {
   const project = existsSync(PROJECT_CONFIG) ? readJSON(PROJECT_CONFIG) : null;
 
   // merge: project overrides user
-  const result = { default: null, profiles: {} };
+  const result = { default: null, profiles: {}, env: {} };
   if (user) {
     result.default = user.default || null;
     if (user.profiles) Object.assign(result.profiles, user.profiles);
+    if (user.env) Object.assign(result.env, user.env);
   }
   if (project) {
     if (project.default) result.default = project.default;
     if (project.profiles) Object.assign(result.profiles, project.profiles);
+    if (project.env) Object.assign(result.env, project.env);
   }
   return result;
+}
+
+/**
+ * 读取 CLI 使用的 APOLLO_* 变量：shell/.env（process.env）优先，
+ * 回退 config.json 的 env 段（用户/项目合并，项目覆盖用户）。
+ */
+export function getEnvVar(name) {
+  if (process.env[name]) return process.env[name];
+  return loadConfig().env[name] || null;
 }
 
 export function resolveProfile(profileName) {
@@ -130,8 +141,14 @@ export function getAllProfiles() {
 
 export function saveUserConfig(data) {
   const existing = readJSON(USER_CONFIG) || { profiles: {} };
-  const merged = { ...existing.profiles, ...data.profiles };
+  // 按字段合并同名 profile：保留手写的 username/password 等字段
+  const merged = { ...existing.profiles };
+  for (const [name, profile] of Object.entries(data.profiles || {})) {
+    merged[name] = { ...merged[name], ...profile };
+  }
+  // 保留其它顶层键（如 env 段）
   writeJSON(USER_CONFIG, {
+    ...existing,
     default: data.default !== undefined ? data.default : existing.default,
     profiles: merged
   });

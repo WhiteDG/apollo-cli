@@ -2,7 +2,7 @@ import { test, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, writeFileSync, rmSync, utimesSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { setupIsolatedHome, assertIsolated, withOutput, writeJSONFile } from './helpers.js';
+import { setupIsolatedHome, assertIsolated, withOutput, writeJSONFile, setEnv } from './helpers.js';
 
 // store.js 在模块加载期冻结 ~/.apollo-cli 路径，必须先完成隔离再动态 import
 const iso = setupIsolatedHome();
@@ -28,12 +28,12 @@ after(() => iso.cleanup());
 // ---- loadConfig ----
 
 test('loadConfig：双缺失返回默认结构', () => {
-  assert.deepEqual(store.loadConfig(), { default: null, profiles: {} });
+  assert.deepEqual(store.loadConfig(), { default: null, profiles: {}, env: {} });
 });
 
 test('loadConfig：仅用户配置时加载用户配置', () => {
   writeJSONFile(userConfigFile, { default: 'dev', profiles: { dev: { baseUrl: 'http://u' } } });
-  assert.deepEqual(store.loadConfig(), { default: 'dev', profiles: { dev: { baseUrl: 'http://u' } } });
+  assert.deepEqual(store.loadConfig(), { default: 'dev', profiles: { dev: { baseUrl: 'http://u' } }, env: {} });
 });
 
 test('loadConfig：项目配置整体覆盖同名 profile 且优先 default', () => {
@@ -53,8 +53,23 @@ test('loadConfig：项目配置整体覆盖同名 profile 且优先 default', ()
       dev: { baseUrl: 'http://project' },
       keep: { baseUrl: 'http://keep' },
       uat: { baseUrl: 'http://uat' }
-    }
+    },
+    env: {}
   });
+});
+
+test('loadConfig：env 段按用户→项目合并，项目覆盖同名键', () => {
+  writeJSONFile(userConfigFile, {
+    profiles: {},
+    env: { APOLLO_USERNAME: 'from-user', APOLLO_PROFILE: 'dev' }
+  });
+  const caseDir = iso.caseDir();
+  writeJSONFile(join(caseDir, 'apollo-cli.config.json'), {
+    profiles: {},
+    env: { APOLLO_USERNAME: 'from-project' }
+  });
+  process.chdir(caseDir);
+  assert.deepEqual(store.loadConfig().env, { APOLLO_USERNAME: 'from-project', APOLLO_PROFILE: 'dev' });
 });
 
 test('loadConfig：用户配置损坏时抛中文错误', () => {
@@ -94,6 +109,24 @@ test('loadConfig：项目配置路径不可读时抛读取失败', () => {
   );
 });
 
+// ---- getEnvVar ----
+
+test('getEnvVar：process.env 优先于 config.json env 段', () => {
+  writeJSONFile(userConfigFile, { profiles: {}, env: { APOLLO_PROFILE: 'from-cfg' } });
+  const restore = setEnv({ APOLLO_PROFILE: 'from-env' });
+  try {
+    assert.equal(store.getEnvVar('APOLLO_PROFILE'), 'from-env');
+  } finally {
+    restore();
+  }
+});
+
+test('getEnvVar：环境变量缺失时回退 config.json env 段，都没有返回 null', () => {
+  writeJSONFile(userConfigFile, { profiles: {}, env: { APOLLO_PROFILE: 'from-cfg' } });
+  assert.equal(store.getEnvVar('APOLLO_PROFILE'), 'from-cfg');
+  assert.equal(store.getEnvVar('APOLLO_MISSING'), null);
+});
+
 // ---- resolveProfile ----
 
 test('resolveProfile：显式 profile 命中返回配置与上下文', () => {
@@ -101,7 +134,7 @@ test('resolveProfile：显式 profile 命中返回配置与上下文', () => {
   const result = store.resolveProfile('dev');
   assert.equal(result.profileName, 'dev');
   assert.deepEqual(result.config, { baseUrl: 'http://d' });
-  assert.deepEqual(result.configFile, { default: null, profiles: { dev: { baseUrl: 'http://d' } } });
+  assert.deepEqual(result.configFile, { default: null, profiles: { dev: { baseUrl: 'http://d' } }, env: {} });
 });
 
 test('resolveProfile：显式 profile 未配置时报错并列出可用 profile', () => {
@@ -148,7 +181,7 @@ test('saveUserConfig：首次写入自动建目录且不产生 default 键', () 
   assert.equal(existsSync(join(userDir, `config.json.${process.pid}.tmp`)), false);
 });
 
-test('saveUserConfig：浅合并保留既有 profile 并覆盖同名', () => {
+test('saveUserConfig：同名 profile 按字段合并并覆盖同名键', () => {
   writeJSONFile(userConfigFile, {
     default: 'dev',
     profiles: { dev: { baseUrl: 'http://a' }, old: { baseUrl: 'http://o' } }
@@ -162,6 +195,40 @@ test('saveUserConfig：浅合并保留既有 profile 并覆盖同名', () => {
       uat: { baseUrl: 'http://u' }
     }
   });
+});
+
+test('saveUserConfig：保留用户手写的 env 段', () => {
+  writeJSONFile(userConfigFile, {
+    profiles: { dev: { baseUrl: 'http://a' } },
+    env: { APOLLO_PROFILE: 'dev' }
+  });
+  store.saveUserConfig({ profiles: { uat: { baseUrl: 'http://u' } } });
+  assert.deepEqual(readJSON(userConfigFile).env, { APOLLO_PROFILE: 'dev' });
+});
+
+test('saveUserConfig：同名 profile 按字段合并，保留手写凭据与额外顶层键', () => {
+  writeJSONFile(userConfigFile, {
+    name: 'my-project',
+    profiles: { dev: { baseUrl: 'http://a', username: 'u', password: 'p' } }
+  });
+  store.saveUserConfig({ profiles: { dev: { baseUrl: 'http://b', portalEnv: 'DEV', cluster: 'default' } } });
+  const written = readJSON(userConfigFile);
+  assert.deepEqual(written.profiles.dev, {
+    baseUrl: 'http://b',
+    portalEnv: 'DEV',
+    cluster: 'default',
+    username: 'u',
+    password: 'p'
+  });
+  assert.equal(written.name, 'my-project');
+});
+
+test('saveUserConfig：省略 profiles 时仅更新 default，不抛错', () => {
+  store.saveUserConfig({ profiles: { dev: { baseUrl: 'http://d' } } });
+  store.saveUserConfig({ default: 'dev' });
+  const written = readJSON(userConfigFile);
+  assert.equal(written.default, 'dev');
+  assert.deepEqual(written.profiles, { dev: { baseUrl: 'http://d' } });
 });
 
 test('saveUserConfig：default 传 null 可置空，不传则保留', () => {

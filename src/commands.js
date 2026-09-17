@@ -1,7 +1,7 @@
 import { loadDotEnv } from './dotenv.js';
 import {
   resolveProfile, getAllProfiles, saveUserConfig, removeProfile,
-  loadSession, saveSession, clearSession, setDefaultProfile
+  loadSession, saveSession, clearSession, setDefaultProfile, getEnvVar
 } from './store.js';
 import { login as authLogin, resolveCredentials, ensureSession, profileVarPrefix } from './auth.js';
 import * as api from './api.js';
@@ -27,7 +27,7 @@ function emit(opts, data, text) {
 }
 
 function pickProfile(opts) {
-  return opts.profile || process.env.APOLLO_PROFILE || null;
+  return opts.profile || getEnvVar('APOLLO_PROFILE');
 }
 
 /**
@@ -53,11 +53,11 @@ function profileCtx(hint, opts = {}) {
 export async function login(profileArg, opts) {
   loadDotEnv();
   const name = profileArg || pickProfile(opts) || null;
-  const { profileName, config } = resolveProfile(name);
+  const { profileName, config, configFile } = resolveProfile(name);
   const baseUrl = config.baseUrl;
-  const creds = resolveCredentials(profileName, opts);
+  const creds = resolveCredentials(profileName, opts, configFile);
   if (!creds) {
-    die(`未找到凭据。请设置环境变量 ${profileVarPrefix(profileName)}USERNAME/PASSWORD, 或全局 APOLLO_USERNAME/PASSWORD, 或使用 --username/--password`);
+    die(`未找到凭据。请设置环境变量 ${profileVarPrefix(profileName)}USERNAME/PASSWORD, 或全局 APOLLO_USERNAME/PASSWORD, 或使用 --username/--password, 或在 config.json 中配置（profile 的 username/password 字段或 env 段）`);
   }
   const cookie = await authLogin(creds, baseUrl);
   saveSession(profileName, { baseUrl, cookie, username: creds.username, savedAt: Date.now() });

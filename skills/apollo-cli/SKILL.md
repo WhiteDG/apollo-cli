@@ -11,8 +11,8 @@ apollo-cli 是本机全局安装的 Apollo 配置中心 CLI（用 `npm i -g gith
 
 - 直接运行 `apollo-cli <命令>`。若提示命令不存在，说明没装，告知用户运行 `npm i -g github:WhiteDG/apollo-cli#master` 安装后再试（不要用 `npm install -g apollo-cli`，registry 上同名包是另一个工具），不要尝试其他绕行方式。
 - `apollo-cli profile list` 查看已配置的 profile、默认 profile、登录状态。用户说"fat 环境"就加 `-p fat`；没说时先确认默认 profile 是什么再动手。
-- **命令要在项目根目录执行**：profile 定义来自 `~/.apollo-cli/config.json`（用户级）与当前目录的 `./apollo-cli.config.json`（项目级）合并，凭据也从当前目录的 `.env` 读取。所以跑命令时留在含这两个文件的项目根目录；如果 profile 突然报"未配置"或凭据找不到，先检查当前目录是不是不在项目根，不要急着删掉 profile 重建。
-- 报"未找到凭据"时，提示用户配置 `APOLLO_<profile 名大写>_USERNAME/PASSWORD`（或全局 `APOLLO_USERNAME/PASSWORD`，写在 shell 环境或项目根目录 `.env` 里）后运行 `apollo-cli login <profile>`。不要替用户编造凭据，也不要去打印 `.env`、`~/.apollo-cli/session.json` 的内容。
+- **命令要在项目根目录执行**：profile 定义来自 `~/.apollo-cli/config.json`（用户级）与当前目录的 `./apollo-cli.config.json`（项目级）合并（同名 profile 项目级整体替换用户级，不是字段合并），凭据可从 shell 环境变量、当前目录的 `.env`、或这两个 config.json 的 `env` 段 / profile 的 `username`/`password` 字段读取（shell 环境变量 > `.env` > config.json）。所以跑命令时留在含这两个文件的项目根目录；如果 profile 突然报"未配置"或凭据找不到，先检查当前目录是不是不在项目根（也可能是项目配置整体覆盖掉了用户配置里手写的凭据），不要急着删掉 profile 重建。
+- 报"未找到凭据"时，提示用户配置 `APOLLO_<profile 名大写>_USERNAME/PASSWORD`（或全局 `APOLLO_USERNAME/PASSWORD`，写在 shell 环境、项目根目录 `.env` 或 config.json 里）后运行 `apollo-cli login <profile>`。不要替用户编造凭据，也不要去打印 `.env`、`~/.apollo-cli/session.json` 的内容。
 
 ## 命令速查
 

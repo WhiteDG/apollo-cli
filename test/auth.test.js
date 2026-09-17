@@ -9,6 +9,7 @@ import {
   jsonResponse,
   redirectResponse,
   seedSession,
+  seedUserConfig,
   setEnv
 } from './helpers.js';
 
@@ -109,6 +110,63 @@ test('resolveCredentials：仅 --username 时 password 为空串', () => {
 test('resolveCredentials：--password 单独提供无效，全无凭据返回 null', () => {
   assert.equal(auth.resolveCredentials('dev', { password: 'p' }), null);
   assert.equal(auth.resolveCredentials('dev', {}), null);
+});
+
+test('resolveCredentials：config.json 的 profile 字段提供凭据', () => {
+  const cfg = { profiles: { fat: { baseUrl: 'http://p', username: 'cfg-u', password: 'cfg-p' } }, env: {} };
+  assert.deepEqual(auth.resolveCredentials('fat', {}, cfg), {
+    username: 'cfg-u',
+    password: 'cfg-p',
+    from: 'profiles.fat'
+  });
+});
+
+test('resolveCredentials：config.json 的 env 段提供凭据，profile 字段优先于 env 段', () => {
+  const both = {
+    profiles: { fat: { username: 'field-u', password: 'field-p' } },
+    env: { APOLLO_FAT_USERNAME: 'env-u', APOLLO_FAT_PASSWORD: 'env-p' }
+  };
+  assert.deepEqual(auth.resolveCredentials('fat', {}, both), {
+    username: 'field-u',
+    password: 'field-p',
+    from: 'profiles.fat'
+  });
+
+  const envOnly = { profiles: {}, env: { APOLLO_FAT_USERNAME: 'env-u', APOLLO_FAT_PASSWORD: 'env-p' } };
+  assert.deepEqual(auth.resolveCredentials('fat', {}, envOnly), {
+    username: 'env-u',
+    password: 'env-p',
+    from: 'APOLLO_FAT_USERNAME (config.json)'
+  });
+
+  const globalEnv = { profiles: {}, env: { APOLLO_USERNAME: 'g-u', APOLLO_PASSWORD: 'g-p' } };
+  assert.deepEqual(auth.resolveCredentials('fat', {}, globalEnv), {
+    username: 'g-u',
+    password: 'g-p',
+    from: 'APOLLO_USERNAME (config.json)'
+  });
+});
+
+test('resolveCredentials：进程环境变量（shell/.env）优先于 config.json 两个来源', () => {
+  const restore = setEnv({ APOLLO_FAT_USERNAME: 'shell-u', APOLLO_FAT_PASSWORD: 'shell-p' });
+  const cfg = {
+    profiles: { fat: { username: 'field-u', password: 'field-p' } },
+    env: { APOLLO_FAT_USERNAME: 'env-u', APOLLO_FAT_PASSWORD: 'env-p' }
+  };
+  try {
+    assert.deepEqual(auth.resolveCredentials('fat', {}, cfg), {
+      username: 'shell-u',
+      password: 'shell-p',
+      from: 'APOLLO_FAT_USERNAME'
+    });
+  } finally {
+    restore();
+  }
+});
+
+test('resolveCredentials：config.json 凭据只配一半时忽略该来源', () => {
+  assert.equal(auth.resolveCredentials('fat', {}, { profiles: { fat: { username: 'only-u' } }, env: {} }), null);
+  assert.equal(auth.resolveCredentials('fat', {}, { profiles: {}, env: { APOLLO_FAT_USERNAME: 'only-u' } }), null);
 });
 
 // ---- extractCookie ----
@@ -334,6 +392,53 @@ test('ensureSession：cwd 的 .env 提供凭据（loadDotEnv 集成）', async t
   }
 });
 
+test('ensureSession：config.json profile 字段凭据可自动登录', async t => {
+  seedUserConfig(iso.home, {
+    default: 'dev',
+    profiles: { dev: { baseUrl: portal, username: 'cfgu', password: 'cfgp' } }
+  });
+  fetchStub(t, (record, idx) =>
+    idx === 0 ? redirectResponse('/apps', ['JSESSIONID=cfg']) : jsonResponse([])
+  );
+  const cookie = await auth.ensureSession('dev', portal, {});
+  assert.equal(cookie, 'NG_TRANSLATE_LANG_KEY=zh-CN; JSESSIONID=cfg');
+  const session = JSON.parse(readFileSync(join(iso.home, '.apollo-cli', 'session.json'), 'utf8'));
+  assert.equal(session.dev.username, 'cfgu');
+});
+
+test('ensureSession：config.json env 段凭据可自动登录', async t => {
+  seedUserConfig(iso.home, {
+    profiles: { dev: { baseUrl: portal } },
+    env: { APOLLO_DEV_USERNAME: 'envu', APOLLO_DEV_PASSWORD: 'envp' }
+  });
+  fetchStub(t, (record, idx) =>
+    idx === 0 ? redirectResponse('/apps', ['JSESSIONID=cfgenv']) : jsonResponse([])
+  );
+  await auth.ensureSession('dev', portal, {});
+  const session = JSON.parse(readFileSync(join(iso.home, '.apollo-cli', 'session.json'), 'utf8'));
+  assert.equal(session.dev.username, 'envu');
+});
+
+test('ensureSession：.env 凭据优先于 config.json（env 段与 profile 字段）', async t => {
+  const restore = setEnv({ APOLLO_DEV_USERNAME: undefined, APOLLO_DEV_PASSWORD: undefined });
+  try {
+    seedUserConfig(iso.home, {
+      profiles: { dev: { baseUrl: portal, username: 'cfgu', password: 'cfgp' } },
+      env: { APOLLO_DEV_USERNAME: 'cfgenv', APOLLO_DEV_PASSWORD: 'cfgenv-p' }
+    });
+    writeFileSync(join(iso.home, '.env'), 'APOLLO_DEV_USERNAME=envuser\nAPOLLO_DEV_PASSWORD=envpw\n', 'utf8');
+    fetchStub(t, (record, idx) =>
+      idx === 0 ? redirectResponse('/apps', ['JSESSIONID=fromenv']) : jsonResponse([])
+    );
+    await auth.ensureSession('dev', portal, {});
+    const session = JSON.parse(readFileSync(join(iso.home, '.apollo-cli', 'session.json'), 'utf8'));
+    assert.equal(session.dev.username, 'envuser');
+  } finally {
+    rmSync(join(iso.home, '.env'), { force: true });
+    restore();
+  }
+});
+
 // ---- reLogin ----
 
 test('reLogin：无凭据返回 null 且不发请求', async t => {
@@ -342,6 +447,27 @@ test('reLogin：无凭据返回 null 且不发请求', async t => {
   });
   assert.equal(await auth.reLogin('dev', portal), null);
   assert.equal(calls.length, 0);
+});
+
+test('reLogin：config.json 凭据可重新登录并透传密码', async t => {
+  seedUserConfig(iso.home, {
+    profiles: { dev: { baseUrl: portal, username: 'cfgu', password: 'cfgp' } }
+  });
+  const calls = fetchStub(t, (record, idx) =>
+    idx === 0 ? redirectResponse('/apps', ['JSESSIONID=relogcfg']) : jsonResponse([])
+  );
+  const result = await auth.reLogin('dev', portal);
+  assert.equal(result.cookie, 'NG_TRANSLATE_LANG_KEY=zh-CN; JSESSIONID=relogcfg');
+  assert.equal(calls[0].body.toString(), 'username=cfgu&password=cfgp&login-submit=%E7%99%BB%E5%BD%95');
+});
+
+test('reLogin：config.json 凭据登录失败时返回 {error} 说明凭据已被采用', async t => {
+  seedUserConfig(iso.home, {
+    profiles: { dev: { baseUrl: portal, username: 'cfgu', password: 'cfgp' } }
+  });
+  fetchStub(t, () => jsonResponse({}, 200));
+  const result = await auth.reLogin('dev', portal);
+  assert.deepEqual(result, { error: '登录失败：Portal 返回 HTTP 200（http://portal.test）' });
 });
 
 test('reLogin：成功返回 {cookie} 并落盘 session', async t => {

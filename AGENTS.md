@@ -38,6 +38,7 @@ This file provides guidance to the AI agent when working with code in this repos
 
 ## 注意
 
+- 非凭据的 CLI 变量（如 `APOLLO_PROFILE`）读取走 `src/store.js` 的 `getEnvVar`（process.env 优先，回退 config.json 的 `env` 段）；凭据解析在 `src/auth.js` 的 `resolveCredentials`（flags → shell/.env → config.json profile 字段 → config.json env 段），两条链的 shell/.env 优先于 config.json 的顺序须保持一致，新增来源时沿用该层级并补测试。
 - 本地 `.env` 与 `apollo-cli.config.json` 含真实凭据且已 gitignore：绝不打印其内容或提交它们。
 - 未经用户要求不要访问线上 Apollo Portal（登录、读写配置均有副作用）。
 - 需要 Node >= 21（用到 `getSetCookie()` 等新 API），不要写旧版本兼容代码。

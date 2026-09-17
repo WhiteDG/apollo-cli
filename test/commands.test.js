@@ -111,6 +111,21 @@ test('profileAdd：--json 输出结构化结果', async () => {
   assert.match(data.defaultPath, /config\.json$/);
 });
 
+test('profileAdd：更新已有 profile 时保留手写凭据字段', async () => {
+  seedUserConfig(iso.home, {
+    profiles: { dev: { baseUrl: portal, username: 'u1', password: 'p1' } }
+  });
+  const { stdout } = await withOutput(() => commands.profileAdd('dev', { 'base-url': 'http://new.test' }));
+  assert.equal(stdout, 'profile "dev" 已添加 (portal: DEV, cluster: default)\n');
+  assert.deepEqual(readJSON(userConfigFile).profiles.dev, {
+    baseUrl: 'http://new.test',
+    username: 'u1',
+    password: 'p1',
+    portalEnv: 'DEV',
+    cluster: 'default'
+  });
+});
+
 test('profileAdd：配置文件损坏时预检抛错且不写入', async () => {
   writeJSONFile(userConfigFile, {});
   writeFileSync(userConfigFile, '{broken', 'utf8');
@@ -877,4 +892,58 @@ test('opts.profile 优先级高于 APOLLO_PROFILE', async t => {
   } finally {
     restore();
   }
+});
+
+test('APOLLO_PROFILE 可来自 config.json 的 env 段', async t => {
+  seedUserConfig(iso.home, {
+    default: 'dev',
+    env: { APOLLO_PROFILE: 'uat' },
+    profiles: {
+      dev: { baseUrl: portal, portalEnv: 'DEV' },
+      uat: { baseUrl: 'http://uat.test', portalEnv: 'UAT' }
+    }
+  });
+  writeJSONFile(sessionFile, {
+    dev: { baseUrl: portal, cookie: 'c1' },
+    uat: { baseUrl: 'http://uat.test', cookie: 'c2' }
+  });
+  const calls = fetchStub(t, () => jsonResponse([]));
+  await withOutput(() => commands.configList('app', { json: true }));
+  assert.equal(calls[0].url, 'http://uat.test/apps/app/envs/UAT/clusters/default/namespaces/application/items');
+});
+
+test('shell 的 APOLLO_PROFILE 优先于 config.json env 段', async t => {
+  seedUserConfig(iso.home, {
+    default: 'dev',
+    env: { APOLLO_PROFILE: 'uat' },
+    profiles: {
+      dev: { baseUrl: portal, portalEnv: 'DEV' },
+      uat: { baseUrl: 'http://uat.test', portalEnv: 'UAT' }
+    }
+  });
+  writeJSONFile(sessionFile, {
+    dev: { baseUrl: portal, cookie: 'c1' },
+    uat: { baseUrl: 'http://uat.test', cookie: 'c2' }
+  });
+  const restore = setEnv({ APOLLO_PROFILE: 'dev' });
+  try {
+    const calls = fetchStub(t, () => jsonResponse([]));
+    await withOutput(() => commands.configList('app', { json: true }));
+    assert.equal(calls[0].url, `${portal}/apps/app/envs/DEV/clusters/default/namespaces/application/items`);
+  } finally {
+    restore();
+  }
+});
+
+test('login：config.json 的 profile 字段凭据可用', async t => {
+  seedUserConfig(iso.home, {
+    default: 'dev',
+    profiles: { dev: { baseUrl: portal, portalEnv: 'DEV', username: 'cfgu', password: 'cfgp' } }
+  });
+  fetchStub(t, (record, idx) =>
+    idx === 0 ? redirectResponse('/apps', ['JSESSIONID=cfgu']) : jsonResponse([])
+  );
+  const { stdout } = await withOutput(() => commands.login('dev', {}));
+  assert.equal(stdout, '登录成功 (dev: http://portal.test) [cfgu]\n');
+  assert.equal(readJSON(sessionFile).dev.username, 'cfgu');
 });

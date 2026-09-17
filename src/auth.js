@@ -1,5 +1,5 @@
 import { loadDotEnv } from './dotenv.js';
-import { loadSession, saveSession } from './store.js';
+import { loadSession, saveSession, loadConfig } from './store.js';
 import { fetchWithTimeout, netError } from './http.js';
 
 export function profileVarPrefix(profileName) {
@@ -10,20 +10,36 @@ function profileVarName(profileName, suffix) {
   return profileVarPrefix(profileName) + suffix;
 }
 
-export function resolveCredentials(profileName, cliOpts) {
+/**
+ * 凭据查找顺序：--username/--password → shell/.env 变量（专属 → 全局）
+ * → config.json profile 的 username/password 字段 → config.json env 段（专属 → 全局）。
+ */
+export function resolveCredentials(profileName, cliOpts, cfg = {}) {
   // CLI flags first
   if (cliOpts.username && cliOpts.password) {
     return { username: cliOpts.username, password: cliOpts.password, from: '--flag' };
   }
-  // Per-profile env vars
   const perProfileUser = profileVarName(profileName, 'USERNAME');
   const perProfilePass = profileVarName(profileName, 'PASSWORD');
+  // shell / .env（已并入 process.env）
   if (process.env[perProfileUser] && process.env[perProfilePass]) {
     return { username: process.env[perProfileUser], password: process.env[perProfilePass], from: perProfileUser };
   }
-  // Global fallback
   if (process.env.APOLLO_USERNAME && process.env.APOLLO_PASSWORD) {
     return { username: process.env.APOLLO_USERNAME, password: process.env.APOLLO_PASSWORD, from: 'APOLLO_USERNAME' };
+  }
+  // config.json：profile 字段
+  const profile = cfg.profiles?.[profileName];
+  if (profile?.username && profile?.password) {
+    return { username: profile.username, password: profile.password, from: `profiles.${profileName}` };
+  }
+  // config.json：env 段
+  const cfgEnv = cfg.env || {};
+  if (cfgEnv[perProfileUser] && cfgEnv[perProfilePass]) {
+    return { username: cfgEnv[perProfileUser], password: cfgEnv[perProfilePass], from: `${perProfileUser} (config.json)` };
+  }
+  if (cfgEnv.APOLLO_USERNAME && cfgEnv.APOLLO_PASSWORD) {
+    return { username: cfgEnv.APOLLO_USERNAME, password: cfgEnv.APOLLO_PASSWORD, from: 'APOLLO_USERNAME (config.json)' };
   }
   if (cliOpts.username) {
     return { username: cliOpts.username, password: cliOpts.password || '', from: '--username' };
@@ -130,9 +146,9 @@ export async function ensureSession(profileName, baseUrl, cliOpts) {
   }
   // Auto-login if credentials available
   loadDotEnv();
-  const creds = resolveCredentials(profileName, cliOpts || {});
+  const creds = resolveCredentials(profileName, cliOpts || {}, loadConfig());
   if (!creds) {
-    throw new Error(`未登录，请先执行 "apollo-cli login ${profileName}" 或设置 ${profileVarPrefix(profileName)}USERNAME/PASSWORD`);
+    throw new Error(`未登录，请先执行 "apollo-cli login ${profileName}" 或设置 ${profileVarPrefix(profileName)}USERNAME/PASSWORD（也可在 config.json 中配置）`);
   }
   const cookie = await login(creds, baseUrl);
   saveSession(profileName, { baseUrl, cookie, username: creds.username, savedAt: Date.now() });
@@ -141,7 +157,7 @@ export async function ensureSession(profileName, baseUrl, cliOpts) {
 
 export async function reLogin(profileName, baseUrl) {
   loadDotEnv();
-  const creds = resolveCredentials(profileName, {});
+  const creds = resolveCredentials(profileName, {}, loadConfig());
   if (!creds) return null;
   try {
     const cookie = await login(creds, baseUrl);
