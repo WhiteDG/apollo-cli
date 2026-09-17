@@ -46,7 +46,7 @@ test('resolveCredentials：--flag 优先级最高', () => {
   }
 });
 
-test('resolveCredentials：环境专属变量胜过全局变量', () => {
+test('resolveCredentials：profile 专属变量胜过全局变量', () => {
   const restore = setEnv({
     APOLLO_FAT_USERNAME: 'per-u',
     APOLLO_FAT_PASSWORD: 'per-p',
@@ -64,7 +64,7 @@ test('resolveCredentials：环境专属变量胜过全局变量', () => {
   }
 });
 
-test('resolveCredentials：环境名规范化（非字母数字转下划线并大写）', () => {
+test('resolveCredentials：profile 名规范化（非字母数字转下划线并大写）', () => {
   const restore = setEnv({
     APOLLO_FAT_2_USERNAME: 'u2',
     APOLLO_FAT_2_PASSWORD: 'p2',
@@ -159,7 +159,7 @@ test('login：成功返回 cookie，并携带正确的请求细节', async t => 
   const calls = fetchStub(t, (record, idx) =>
     idx === 0 ? redirectResponse('/apps', ['JSESSIONID=abc; Path=/']) : jsonResponse([])
   );
-  const cookie = await auth.login('dev', { username: 'alice', password: 'pw' }, portal);
+  const cookie = await auth.login({ username: 'alice', password: 'pw' }, portal);
   assert.equal(cookie, 'NG_TRANSLATE_LANG_KEY=zh-CN; JSESSIONID=abc');
   assert.equal(calls[0].url, `${portal}/signin`);
   assert.equal(calls[0].method, 'POST');
@@ -175,19 +175,19 @@ test('login：成功返回 cookie，并携带正确的请求细节', async t => 
 test('login：非 302 返回 HTTP 状态错误', async t => {
   fetchStub(t, () => jsonResponse({}, 200));
   await assert.rejects(
-    () => auth.login('dev', { username: 'u', password: 'p' }, portal),
+    () => auth.login({ username: 'u', password: 'p' }, portal),
     /登录失败：Portal 返回 HTTP 200（http:\/\/portal.test）/
   );
 });
 
 test('login：302 无 JSESSIONID 视为密码错误', async t => {
   fetchStub(t, () => redirectResponse('/apps'));
-  await assert.rejects(() => auth.login('dev', { username: 'u', password: 'p' }, portal), /登录失败：用户名或密码错误/);
+  await assert.rejects(() => auth.login({ username: 'u', password: 'p' }, portal), /登录失败：用户名或密码错误/);
 });
 
 test('login：302 跳回 signin 视为密码错误', async t => {
   fetchStub(t, () => redirectResponse('/signin', ['JSESSIONID=abc']));
-  await assert.rejects(() => auth.login('dev', { username: 'u', password: 'p' }, portal), /登录失败：用户名或密码错误/);
+  await assert.rejects(() => auth.login({ username: 'u', password: 'p' }, portal), /登录失败：用户名或密码错误/);
 });
 
 test('login：请求失败抛无法连接', async t => {
@@ -197,7 +197,7 @@ test('login：请求失败抛无法连接', async t => {
     throw err;
   });
   await assert.rejects(
-    () => auth.login('dev', { username: 'u', password: 'p' }, portal),
+    () => auth.login({ username: 'u', password: 'p' }, portal),
     /无法连接 http:\/\/portal.test（ECONNREFUSED）/
   );
 });
@@ -209,7 +209,7 @@ test('login：请求超时抛超时文案', async t => {
     throw err;
   });
   await assert.rejects(
-    () => auth.login('dev', { username: 'u', password: 'p' }, portal),
+    () => auth.login({ username: 'u', password: 'p' }, portal),
     /请求超时（30s 无响应）: http:\/\/portal.test/
   );
 });
@@ -222,7 +222,7 @@ test('login：校验步超时带验证失败后缀', async t => {
     throw err;
   });
   await assert.rejects(
-    () => auth.login('dev', { username: 'u', password: 'p' }, portal),
+    () => auth.login({ username: 'u', password: 'p' }, portal),
     /请求超时（30s 无响应）: http:\/\/portal.test（验证登录状态失败）/
   );
 });
@@ -232,7 +232,7 @@ test('login：校验步跳回 signin 抛 cookie 无效', async t => {
     idx === 0 ? redirectResponse('/apps', ['JSESSIONID=abc']) : redirectResponse('/signin')
   );
   await assert.rejects(
-    () => auth.login('dev', { username: 'u', password: 'p' }, portal),
+    () => auth.login({ username: 'u', password: 'p' }, portal),
     /登录验证失败：cookie 无效或凭据有误/
   );
 });
@@ -241,7 +241,7 @@ test('login：校验步返回非 signin 重定向时仍视为登录成功（现�
   fetchStub(t, (record, idx) =>
     idx === 0 ? redirectResponse('/apps', ['JSESSIONID=abc']) : redirectResponse('/other')
   );
-  const cookie = await auth.login('dev', { username: 'u', password: 'p' }, portal);
+  const cookie = await auth.login({ username: 'u', password: 'p' }, portal);
   assert.equal(cookie, 'NG_TRANSLATE_LANG_KEY=zh-CN; JSESSIONID=abc');
 });
 
@@ -253,7 +253,7 @@ test('login：校验步网络错误带 cause 文案', async t => {
     throw err;
   });
   await assert.rejects(
-    () => auth.login('dev', { username: 'u', password: 'p' }, portal),
+    () => auth.login({ username: 'u', password: 'p' }, portal),
     /无法连接 http:\/\/portal.test（ENOTFOUND）（验证登录状态失败）/
   );
 });
@@ -263,7 +263,7 @@ test('login：校验步网络错误无 cause 时省略括号', async t => {
     if (idx === 0) return redirectResponse('/apps', ['JSESSIONID=abc']);
     throw new Error('boom');
   });
-  await assert.rejects(() => auth.login('dev', { username: 'u', password: 'p' }, portal), err => {
+  await assert.rejects(() => auth.login({ username: 'u', password: 'p' }, portal), err => {
     return err.message === '无法连接 http://portal.test（验证登录状态失败）';
   });
 });
@@ -290,7 +290,7 @@ test('ensureSession：baseUrl 不匹配且无凭据时抛未登录指引', async
   );
 });
 
-test('ensureSession：环境名含特殊字符时提示与实际读取一致的变量名', async t => {
+test('ensureSession：profile 名含特殊字符时提示与实际读取一致的变量名', async t => {
   fetchStub(t, () => {
     throw new Error('不应发起请求');
   });

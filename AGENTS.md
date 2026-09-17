@@ -44,4 +44,4 @@ This file provides guidance to the AI agent when working with code in this repos
 - `src/store.js` 的原子写入带 Windows 杀软文件锁重试（EPERM/EACCES/EBUSY），改持久化逻辑时保留该行为。
 - `src/output.js` 的表格按 CJK 双宽字符计算列宽，新增输出列时沿用此逻辑。
 - 所有网络请求必须走 `src/http.js` 的 `fetchWithTimeout`（默认 30s 超时 + 统一连接错误文案），不要在业务代码里直接 `fetch`。
-- 写命令（login/logout/env add|rm|default/config set|rm|publish）用 `src/commands.js` 的 `emit()` 保持双轨输出：`--json` 输出结构化结果（含 `needsPublish`/`releaseId` 等字段），否则输出中文文案；`config set/rm/publish` 保持 `--dry-run` 只读预演行为。新增写命令沿用此约定。
+- 写命令（login/logout/profile add|rm|default/config set|rm|publish）用 `src/commands.js` 的 `emit()` 保持双轨输出：`--json` 输出结构化结果（含 `needsPublish`/`releaseId` 等字段），否则输出中文文案；`config set/rm/publish` 保持 `--dry-run` 只读预演行为。新增写命令沿用此约定。

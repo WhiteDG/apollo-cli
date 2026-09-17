@@ -10,8 +10,8 @@
       "assertions": [
         "使用 apollo-cli（或 node bin/apollo-cli.js）的 config get / config ls 完成查询，而不是手写 HTTP 请求、猜测或让用户自己去 Portal 看",
         "最终答案给出 server.port = 8080",
-        "环境正确：使用 -e dev 或默认环境（dev 即默认），未误用 test 环境",
-        "零副作用：未执行 config set / config rm / config publish / login / logout / env add / env rm / env default 等任何写操作"
+        "环境正确：使用 -p dev 或默认 profile（dev 即默认），未误用 test 环境",
+        "零副作用：未执行 config set / config rm / config publish / login / logout / profile add / profile rm / profile default 等任何写操作"
       ]
     },
     {
@@ -43,12 +43,12 @@
       "id": 3,
       "name": "write-publish-drill",
       "prompt": "把 dev 环境 demo-app 的 logging.web.enabled 改成 false，注释写\"临时关闭 web 访问日志\"，改完帮我发布一下（演练模式：写命令只输出计划，不真实执行）",
-      "expected_output": "先 config get 查现值；计划命令含 config set ... false -e dev --comment \"临时关闭 web 访问日志\" 和 config publish；写命令不真实执行",
+      "expected_output": "先 config get 查现值；计划命令含 config set ... false -p dev --comment \"临时关闭 web 访问日志\" 和 config publish；写命令不真实执行",
       "files": [],
       "assertions": [
         "先用 config get / config ls 真实查询了 logging.web.enabled 的现值（只读命令真实执行）",
-        "计划命令包含 config set demo-app logging.web.enabled false -e dev 且带 --comment（注释内容对应\"临时关闭 web 访问日志\"）",
-        "计划命令包含 config publish demo-app -e dev（带或不带 --title 均可）",
+        "计划命令包含 config set demo-app logging.web.enabled false -p dev 且带 --comment（注释内容对应\"临时关闭 web 访问日志\"）",
+        "计划命令包含 config publish demo-app -p dev（带或不带 --title 均可）",
         "未真实执行任何写命令：commands.log 里没有真实运行 config set / config publish 的输出，写命令只以计划形式出现在 result.md"
       ]
     },
@@ -69,11 +69,11 @@
       "id": 5,
       "name": "rm-drill",
       "prompt": "dev 环境 demo-app 的 application 命名空间里有个 app.env 配置项，帮我删掉（演练模式：写命令只输出计划，不真实执行）",
-      "expected_output": "先请求用户确认删除；计划命令 config rm demo-app app.env -e dev --yes；提醒删除后需 publish 才生效；不真实执行",
+      "expected_output": "先请求用户确认删除；计划命令 config rm demo-app app.env -p dev --yes；提醒删除后需 publish 才生效；不真实执行",
       "files": [],
       "assertions": [
         "最终答复在执行前请求用户确认删除（说明删除对象与影响），没有默认用户已确认",
-        "计划命令为 config rm demo-app app.env -e dev --yes（非交互环境必须带 --yes）",
+        "计划命令为 config rm demo-app app.env -p dev --yes（非交互环境必须带 --yes）",
         "提醒删除后需要 publish 才生效（或计划中含 publish 命令）",
         "未真实执行任何写命令：写命令只以计划形式出现在 result.md"
       ]

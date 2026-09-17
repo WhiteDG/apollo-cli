@@ -23,7 +23,7 @@ beforeEach(() => {
 
 after(() => iso.cleanup());
 
-const opts = { envName: 'dev', baseUrl: 'http://portal.test', cookie: 'JSESSIONID=c1' };
+const opts = { profileName: 'dev', baseUrl: 'http://portal.test', cookie: 'JSESSIONID=c1' };
 
 // ---- portalJSON 状态码与错误提取 ----
 
@@ -91,10 +91,10 @@ test('portalRequest：401 且无凭据时抛指引错误', async t => {
   assert.equal(calls.length, 1);
 });
 
-test('portalRequest：环境名含特殊字符时提示与实际读取一致的变量名', async t => {
+test('portalRequest：profile 名含特殊字符时提示与实际读取一致的变量名', async t => {
   fetchStub(t, () => emptyResponse(401));
   await assert.rejects(
-    () => client.portalJSON('GET', '/x', { ...opts, envName: 'fat-2' }),
+    () => client.portalJSON('GET', '/x', { ...opts, profileName: 'fat-2' }),
     err => err.message.includes('APOLLO_FAT_2_USERNAME/PASSWORD') && !err.message.includes('FAT-2')
   );
 });

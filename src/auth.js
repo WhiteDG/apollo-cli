@@ -2,24 +2,24 @@ import { loadDotEnv } from './dotenv.js';
 import { loadSession, saveSession } from './store.js';
 import { fetchWithTimeout, netError } from './http.js';
 
-export function envVarPrefix(envName) {
-  return `APOLLO_${envName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}_`;
+export function profileVarPrefix(profileName) {
+  return `APOLLO_${profileName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}_`;
 }
 
-function envVarName(envName, suffix) {
-  return envVarPrefix(envName) + suffix;
+function profileVarName(profileName, suffix) {
+  return profileVarPrefix(profileName) + suffix;
 }
 
-export function resolveCredentials(envName, cliOpts) {
+export function resolveCredentials(profileName, cliOpts) {
   // CLI flags first
   if (cliOpts.username && cliOpts.password) {
     return { username: cliOpts.username, password: cliOpts.password, from: '--flag' };
   }
-  // Per-env env vars
-  const perEnvUser = envVarName(envName, 'USERNAME');
-  const perEnvPass = envVarName(envName, 'PASSWORD');
-  if (process.env[perEnvUser] && process.env[perEnvPass]) {
-    return { username: process.env[perEnvUser], password: process.env[perEnvPass], from: perEnvUser };
+  // Per-profile env vars
+  const perProfileUser = profileVarName(profileName, 'USERNAME');
+  const perProfilePass = profileVarName(profileName, 'PASSWORD');
+  if (process.env[perProfileUser] && process.env[perProfilePass]) {
+    return { username: process.env[perProfileUser], password: process.env[perProfilePass], from: perProfileUser };
   }
   // Global fallback
   if (process.env.APOLLO_USERNAME && process.env.APOLLO_PASSWORD) {
@@ -69,7 +69,7 @@ export function extractCookie(headers) {
   return result;
 }
 
-export async function login(envName, creds, baseUrl) {
+export async function login(creds, baseUrl) {
   const body = new URLSearchParams({
     username: creds.username,
     password: creds.password,
@@ -122,30 +122,30 @@ export async function login(envName, creds, baseUrl) {
   return cookie;
 }
 
-export async function ensureSession(envName, baseUrl, cliOpts) {
+export async function ensureSession(profileName, baseUrl, cliOpts) {
   const sessions = loadSession();
-  const stored = sessions[envName];
+  const stored = sessions[profileName];
   if (stored && stored.baseUrl === baseUrl && stored.cookie) {
     return stored.cookie;
   }
   // Auto-login if credentials available
   loadDotEnv();
-  const creds = resolveCredentials(envName, cliOpts || {});
+  const creds = resolveCredentials(profileName, cliOpts || {});
   if (!creds) {
-    throw new Error(`未登录，请先执行 "apollo-cli login ${envName}" 或设置 ${envVarPrefix(envName)}USERNAME/PASSWORD`);
+    throw new Error(`未登录，请先执行 "apollo-cli login ${profileName}" 或设置 ${profileVarPrefix(profileName)}USERNAME/PASSWORD`);
   }
-  const cookie = await login(envName, creds, baseUrl);
-  saveSession(envName, { baseUrl, cookie, username: creds.username, savedAt: Date.now() });
+  const cookie = await login(creds, baseUrl);
+  saveSession(profileName, { baseUrl, cookie, username: creds.username, savedAt: Date.now() });
   return cookie;
 }
 
-export async function reLogin(envName, baseUrl) {
+export async function reLogin(profileName, baseUrl) {
   loadDotEnv();
-  const creds = resolveCredentials(envName, {});
+  const creds = resolveCredentials(profileName, {});
   if (!creds) return null;
   try {
-    const cookie = await login(envName, creds, baseUrl);
-    saveSession(envName, { baseUrl, cookie, username: creds.username, savedAt: Date.now() });
+    const cookie = await login(creds, baseUrl);
+    saveSession(profileName, { baseUrl, cookie, username: creds.username, savedAt: Date.now() });
     return { cookie };
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };

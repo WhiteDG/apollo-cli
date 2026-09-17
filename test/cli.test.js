@@ -29,7 +29,7 @@ function readJSON(file) {
 function seedDev() {
   seedUserConfig(iso.home, {
     default: 'dev',
-    environments: { dev: { baseUrl: portal, portalEnv: 'DEV', cluster: 'default' } }
+    profiles: { dev: { baseUrl: portal, portalEnv: 'DEV', cluster: 'default' } }
   });
   seedSession(iso.home, 'dev', { baseUrl: portal, cookie: 'sess-cookie', username: 'alice', savedAt: 1 });
 }
@@ -79,45 +79,45 @@ test('cli：--version/-V 输出版本号且不置 exitCode', async () => {
 test('cli：未知命令报错并置 exitCode=1', async () => {
   const res = await runCli(['foo']);
   assert.equal(res.stdout, '');
-  assert.equal(res.stderr, '未知命令: "foo"\n可用命令: login, logout, env, ns, config\n');
+  assert.equal(res.stderr, '未知命令: "foo"\n可用命令: login, logout, profile, ns, config\n');
   assert.equal(res.exitCode, 1);
 });
 
-test('cli：env 无参输出子帮助，未知子命令报错', async () => {
-  const help = await runCli(['env']);
-  assert.match(help.stdout, /用法:\n  apollo-cli env list/);
+test('cli：profile 无参输出子帮助，未知子命令报错', async () => {
+  const help = await runCli(['profile']);
+  assert.match(help.stdout, /用法:\n  apollo-cli profile list/);
   assert.equal(help.exitCode, undefined);
 
-  const bad = await runCli(['env', 'x']);
-  assert.equal(bad.stderr, '未知 env 子命令: "x"。可用: list, add, rm, default\n');
+  const bad = await runCli(['profile', 'x']);
+  assert.equal(bad.stderr, '未知 profile 子命令: "x"。可用: list, add, rm, default\n');
   assert.equal(bad.exitCode, 1);
 });
 
-test('cli：env add 缺参数校验', async () => {
-  const missingName = await runCli(['env', 'add']);
-  assert.equal(missingName.stderr, '缺少参数。用法: env add <name> --base-url <url>\n');
+test('cli：profile add 缺参数校验', async () => {
+  const missingName = await runCli(['profile', 'add']);
+  assert.equal(missingName.stderr, '缺少参数。用法: profile add <name> --base-url <url>\n');
   assert.equal(missingName.exitCode, 1);
 
-  const missingUrl = await runCli(['env', 'add', 'dev']);
+  const missingUrl = await runCli(['profile', 'add', 'dev']);
   assert.equal(missingUrl.stderr, '--base-url 是必填参数\n');
   assert.equal(missingUrl.exitCode, 1);
 });
 
-test('cli：env add 全链路落盘并支持 --default', async () => {
-  const res = await runCli(['env', 'add', 'dev', '--base-url', 'http://p', '--default']);
+test('cli：profile add 全链路落盘并支持 --default', async () => {
+  const res = await runCli(['profile', 'add', 'dev', '--base-url', 'http://p', '--default']);
   assert.match(
     res.stdout,
-    /^环境 "dev" 已添加 \(portal: DEV, cluster: default\)\n默认环境已设为 "dev"（已写入用户配置: .*config\.json）\n$/
+    /^profile "dev" 已添加 \(portal: DEV, cluster: default\)\n默认 profile 已设为 "dev"（已写入用户配置: .*config\.json）\n$/
   );
   assert.equal(res.exitCode, undefined);
   assert.deepEqual(readJSON(userConfigFile), {
-    environments: { dev: { baseUrl: 'http://p', portalEnv: 'DEV', cluster: 'default' } },
+    profiles: { dev: { baseUrl: 'http://p', portalEnv: 'DEV', cluster: 'default' } },
     default: 'dev'
   });
 });
 
-test('cli：env list --json 输出可解析 JSON', async () => {
-  const res = await runCli(['env', 'list', '--json']);
+test('cli：profile list --json 输出可解析 JSON', async () => {
+  const res = await runCli(['profile', 'list', '--json']);
   assert.equal(res.stdout, '[]\n');
   assert.deepEqual(JSON.parse(res.stdout), []);
 });
@@ -184,36 +184,51 @@ test('cli：--limit 必须是正整数', async () => {
 });
 
 test('cli：未知选项报错中文化并置 exitCode=1', async () => {
-  const res = await runCli(['env', 'list', '--bogus']);
+  const res = await runCli(['profile', 'list', '--bogus']);
   assert.match(res.stderr, /^未知选项 '--bogus'/);
   assert.equal(res.exitCode, 1);
 
-  const missingValue = await runCli(['env', 'list', '-e']);
-  assert.match(missingValue.stderr, /^选项 '-e, --env .*缺少参数值/);
+  const missingValue = await runCli(['profile', 'list', '-p']);
+  assert.match(missingValue.stderr, /^选项 '-p, --profile .*缺少参数值/);
   assert.equal(missingValue.exitCode, 1);
 
-  const takesNoArg = await runCli(['env', 'list', '--json=1']);
+  const takesNoArg = await runCli(['profile', 'list', '--json=1']);
   assert.match(takesNoArg.stderr, /^选项 '--json' 不接受参数值/);
   assert.equal(takesNoArg.exitCode, 1);
 });
 
-test('cli：全局选项前置（--json/-e 在命令之前）', async t => {
+test('cli：全局选项前置（--json/-p 在命令之前）', async t => {
   seedUserConfig(iso.home, {
     default: 'dev',
-    environments: { dev: { baseUrl: portal, portalEnv: 'DEV' } }
+    profiles: { dev: { baseUrl: portal, portalEnv: 'DEV' } }
   });
   seedSession(iso.home, 'dev', { baseUrl: portal, cookie: 'c', username: 'alice', savedAt: 1 });
   const calls = fetchStub(t, () => jsonResponse([{ key: 'k', value: 'v' }]));
-  const res = await runCli(['--json', '-e', 'dev', 'config', 'get', 'app', 'k']);
+  const res = await runCli(['--json', '-p', 'dev', 'config', 'get', 'app', 'k']);
   assert.equal(res.exitCode, undefined);
   assert.deepEqual(JSON.parse(res.stdout), [{ key: 'k', value: 'v', 注释: '', 修改人: '', 修改时间: '' }]);
   assert.match(calls[0].url, /\/envs\/DEV\/clusters\/default\/namespaces\/application\/items$/);
 });
 
-test('cli：前置全局选项与 -- 混用不被吞（回归：-e/--json 静默失效）', async t => {
+test('cli：--profile 长选项生效', async t => {
+  seedUserConfig(iso.home, {
+    default: 'dev',
+    profiles: {
+      dev: { baseUrl: portal, portalEnv: 'DEV' },
+      uat: { baseUrl: 'http://uat.test', portalEnv: 'UAT' }
+    }
+  });
+  seedSession(iso.home, 'uat', { baseUrl: 'http://uat.test', cookie: 'c2', username: 'alice', savedAt: 1 });
+  const calls = fetchStub(t, () => jsonResponse([{ key: 'k', value: 'v' }]));
+  const res = await runCli(['config', 'get', 'app', 'k', '--profile', 'uat', '--json']);
+  assert.equal(res.exitCode, undefined);
+  assert.equal(calls[0].url, 'http://uat.test/apps/app/envs/UAT/clusters/default/namespaces/application/items');
+});
+
+test('cli：前置全局选项与 -- 混用不被吞（回归：-p/--json 静默失效）', async t => {
   seedUserConfig(iso.home, {
     default: 'other',
-    environments: {
+    profiles: {
       other: { baseUrl: 'http://other.test', portalEnv: 'OTHER' },
       dev: { baseUrl: portal, portalEnv: 'DEV' }
     }
@@ -222,18 +237,18 @@ test('cli：前置全局选项与 -- 混用不被吞（回归：-e/--json 静默
   const calls = fetchStub(t, record =>
     record.method === 'GET' ? jsonResponse([{ id: 1, key: 'k', value: 'old' }]) : jsonResponse(null)
   );
-  const res = await runCli(['-e', 'dev', '--json', 'config', 'set', 'app', 'k', '--', '-1']);
+  const res = await runCli(['-p', 'dev', '--json', 'config', 'set', 'app', 'k', '--', '-1']);
   assert.equal(res.exitCode, undefined);
   const put = calls.find(c => c.method === 'PUT');
   assert.ok(put, '应发生 PUT');
-  assert.match(put.url, /envs\/DEV\//, '-e 必须生效，不能落到默认环境');
+  assert.match(put.url, /envs\/DEV\//, '-p 必须生效，不能落到默认 profile');
   assert.equal(JSON.parse(put.body).value, '-1', '-- 后的负数值应作为位置参数写入');
   assert.equal(JSON.parse(res.stdout).action, 'update', '--json 不能被 -- 吞掉');
 });
 
 test('cli：仅全局选项或裸选项时报缺少命令/未知选项', async () => {
   const bare = await runCli(['--json']);
-  assert.equal(bare.stderr, '缺少命令。可用命令: login, logout, env, ns, config\n');
+  assert.equal(bare.stderr, '缺少命令。可用命令: login, logout, profile, ns, config\n');
   assert.equal(bare.exitCode, 1);
 
   const bogus = await runCli(['--bogus']);
@@ -282,17 +297,17 @@ test('cli：config set --json 输出结构化变更结果', async t => {
   assert.equal(res.exitCode, undefined);
 });
 
-test('cli：-e/-n 透传到目标环境与命名空间', async t => {
+test('cli：-p/-n 透传到目标 profile 与命名空间', async t => {
   seedUserConfig(iso.home, {
     default: 'dev',
-    environments: {
+    profiles: {
       dev: { baseUrl: portal, portalEnv: 'DEV' },
       uat: { baseUrl: 'http://uat.test', portalEnv: 'UAT' }
     }
   });
   seedSession(iso.home, 'uat', { baseUrl: 'http://uat.test', cookie: 'c2', username: 'alice', savedAt: 1 });
   const calls = fetchStub(t, () => jsonResponse([{ key: 'k', value: 'v' }]));
-  const res = await runCli(['config', 'get', 'app', 'k', '-e', 'uat', '-n', 'custom.ns', '--json']);
+  const res = await runCli(['config', 'get', 'app', 'k', '-p', 'uat', '-n', 'custom.ns', '--json']);
   assert.equal(
     calls[0].url,
     'http://uat.test/apps/app/envs/UAT/clusters/default/namespaces/custom.ns/items'
@@ -345,9 +360,9 @@ test('cli：config get 未命中时 exitCode=1', async t => {
   assert.equal(res.exitCode, 1);
 });
 
-test('cli：login 无环境时报未配置环境', async () => {
+test('cli：login 无 profile 时报未配置 profile', async () => {
   const res = await runCli(['login']);
-  assert.match(res.stderr, /未配置任何环境/);
+  assert.match(res.stderr, /未配置任何 profile/);
   assert.equal(res.exitCode, 1);
 });
 
@@ -364,10 +379,10 @@ test('cli：login --username/--password 成功后落盘 session', async t => {
   assert.equal(session.dev.cookie, 'NG_TRANSLATE_LANG_KEY=zh-CN; JSESSIONID=cli');
 });
 
-test('cli：login 有环境但无凭据时报未找到凭据', async () => {
+test('cli：login 有 profile 但无凭据时报未找到凭据', async () => {
   seedUserConfig(iso.home, {
     default: 'dev',
-    environments: { dev: { baseUrl: portal, portalEnv: 'DEV' } }
+    profiles: { dev: { baseUrl: portal, portalEnv: 'DEV' } }
   });
   const res = await runCli(['login', 'dev']);
   assert.match(res.stderr, /未找到凭据。请设置环境变量 APOLLO_DEV_USERNAME\/PASSWORD/);
@@ -382,30 +397,30 @@ test('cli：logout 清除登录状态', async () => {
   assert.deepEqual(readJSON(join(iso.home, '.apollo-cli', 'session.json')), {});
 });
 
-test('cli：env rm/env default 缺参校验与路由', async () => {
-  const rmMissing = await runCli(['env', 'rm']);
-  assert.equal(rmMissing.stderr, '缺少参数。用法: env rm <name>\n');
+test('cli：profile rm/profile default 缺参校验与路由', async () => {
+  const rmMissing = await runCli(['profile', 'rm']);
+  assert.equal(rmMissing.stderr, '缺少参数。用法: profile rm <name>\n');
   assert.equal(rmMissing.exitCode, 1);
 
-  const rmGhost = await runCli(['env', 'rm', 'ghost']);
-  assert.equal(rmGhost.stderr, '环境 "ghost" 不存在\n');
+  const rmGhost = await runCli(['profile', 'rm', 'ghost']);
+  assert.equal(rmGhost.stderr, 'profile "ghost" 不存在\n');
   assert.equal(rmGhost.exitCode, 1);
 
-  const defMissing = await runCli(['env', 'default']);
-  assert.equal(defMissing.stderr, '缺少参数。用法: env default <name>\n');
+  const defMissing = await runCli(['profile', 'default']);
+  assert.equal(defMissing.stderr, '缺少参数。用法: profile default <name>\n');
   assert.equal(defMissing.exitCode, 1);
 
-  const defGhost = await runCli(['env', 'default', 'ghost']);
-  assert.equal(defGhost.stderr, '环境 "ghost" 不存在\n');
+  const defGhost = await runCli(['profile', 'default', 'ghost']);
+  assert.equal(defGhost.stderr, 'profile "ghost" 不存在\n');
   assert.equal(defGhost.exitCode, 1);
 
   seedDev();
-  const defOk = await runCli(['env', 'default', 'dev']);
-  assert.match(defOk.stdout, /^默认环境已设为 "dev"（已写入用户配置: .*config\.json）\n$/);
+  const defOk = await runCli(['profile', 'default', 'dev']);
+  assert.match(defOk.stdout, /^默认 profile 已设为 "dev"（已写入用户配置: .*config\.json）\n$/);
   assert.equal(defOk.exitCode, undefined);
 
-  const rmOk = await runCli(['env', 'rm', 'dev']);
-  assert.equal(rmOk.stdout, '环境 "dev" 已删除（从用户配置中移除）\n');
+  const rmOk = await runCli(['profile', 'rm', 'dev']);
+  assert.equal(rmOk.stdout, 'profile "dev" 已删除（从用户配置中移除）\n');
   assert.equal(rmOk.exitCode, undefined);
 });
 

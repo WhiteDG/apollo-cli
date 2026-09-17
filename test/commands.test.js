@@ -34,7 +34,7 @@ function readJSON(file) {
 function seedDev({ session = { baseUrl: portal, cookie: 'sess-cookie', username: 'alice', savedAt: 1 } } = {}) {
   seedUserConfig(iso.home, {
     default: 'dev',
-    environments: { dev: { baseUrl: portal, portalEnv: 'DEV', cluster: 'default' } }
+    profiles: { dev: { baseUrl: portal, portalEnv: 'DEV', cluster: 'default' } }
   });
   if (session) seedSession(iso.home, 'dev', session);
 }
@@ -48,61 +48,61 @@ beforeEach(() => {
 
 after(() => iso.cleanup());
 
-// ---- env ----
+// ---- profile ----
 
-test('envList：空环境非 json 给出添加指引', async () => {
-  const { stdout } = await withOutput(() => commands.envList({}));
-  assert.equal(stdout, '未配置环境。使用 "apollo-cli env add <name> --base-url <url>" 添加\n');
+test('profileList：空 profile 非 json 给出添加指引', async () => {
+  const { stdout } = await withOutput(() => commands.profileList({}));
+  assert.equal(stdout, '未配置 profile。使用 "apollo-cli profile add <name> --base-url <url>" 添加\n');
 });
 
-test('envList：空环境 json 输出空数组', async () => {
-  const { stdout } = await withOutput(() => commands.envList({ json: true }));
+test('profileList：空 profile json 输出空数组', async () => {
+  const { stdout } = await withOutput(() => commands.profileList({ json: true }));
   assert.equal(stdout, '[]\n');
 });
 
-test('envList：表格显示默认标记与已登录状态', async () => {
-  seedUserConfig(iso.home, { default: 'fat', environments: { fat: { baseUrl: 'http://p' } } });
+test('profileList：表格显示默认标记与已登录状态', async () => {
+  seedUserConfig(iso.home, { default: 'fat', profiles: { fat: { baseUrl: 'http://p' } } });
   seedSession(iso.home, 'fat', { baseUrl: 'http://p', cookie: 'c' });
-  const { stdout } = await withOutput(() => commands.envList({}));
+  const { stdout } = await withOutput(() => commands.profileList({}));
   const expected =
-    '环境  baseUrl   Apollo环境  默认  已登录\n' +
-    '─'.repeat(40) +
+    'profile  baseUrl   Apollo环境  默认  已登录\n' +
+    '─'.repeat(43) +
     '\n' +
-    'fat   http://p  FAT         ✓     是    \n';
+    'fat      http://p  FAT         ✓     是    \n';
   assert.equal(stdout, expected);
 });
 
-test('envList：session baseUrl 不匹配显示未登录', async () => {
-  seedUserConfig(iso.home, { default: 'fat', environments: { fat: { baseUrl: 'http://p' } } });
+test('profileList：session baseUrl 不匹配显示未登录', async () => {
+  seedUserConfig(iso.home, { default: 'fat', profiles: { fat: { baseUrl: 'http://p' } } });
   seedSession(iso.home, 'fat', { baseUrl: 'http://other', cookie: 'c' });
-  const { stdout } = await withOutput(() => commands.envList({}));
-  assert.match(stdout, /fat   http:\/\/p  FAT         ✓     否    \n$/);
+  const { stdout } = await withOutput(() => commands.profileList({}));
+  assert.match(stdout, /fat      http:\/\/p  FAT         ✓     否    \n$/);
 });
 
-test('envAdd：去尾斜杠并落盘默认 portalEnv/cluster', async () => {
-  const { stdout } = await withOutput(() => commands.envAdd('fat', { 'base-url': 'http://p/' }));
-  assert.equal(stdout, '环境 "fat" 已添加 (portal: FAT, cluster: default)\n');
+test('profileAdd：去尾斜杠并落盘默认 portalEnv/cluster', async () => {
+  const { stdout } = await withOutput(() => commands.profileAdd('fat', { 'base-url': 'http://p/' }));
+  assert.equal(stdout, 'profile "fat" 已添加 (portal: FAT, cluster: default)\n');
   assert.deepEqual(readJSON(userConfigFile), {
-    environments: { fat: { baseUrl: 'http://p', portalEnv: 'FAT', cluster: 'default' } }
+    profiles: { fat: { baseUrl: 'http://p', portalEnv: 'FAT', cluster: 'default' } }
   });
 });
 
-test('envAdd：显式 portal-env/cluster 生效', async () => {
+test('profileAdd：显式 portal-env/cluster 生效', async () => {
   const { stdout } = await withOutput(() =>
-    commands.envAdd('fat', { 'base-url': 'http://p', 'portal-env': 'FAT_PROD', cluster: 'c1' })
+    commands.profileAdd('fat', { 'base-url': 'http://p', 'portal-env': 'FAT_PROD', cluster: 'c1' })
   );
-  assert.equal(stdout, '环境 "fat" 已添加 (portal: FAT_PROD, cluster: c1)\n');
-  assert.equal(readJSON(userConfigFile).environments.fat.cluster, 'c1');
+  assert.equal(stdout, 'profile "fat" 已添加 (portal: FAT_PROD, cluster: c1)\n');
+  assert.equal(readJSON(userConfigFile).profiles.fat.cluster, 'c1');
 });
 
-test('envAdd：--default 追加默认环境提示并写入默认值', async () => {
-  const { stdout } = await withOutput(() => commands.envAdd('fat', { 'base-url': 'http://p', default: true }));
-  assert.match(stdout, /^环境 "fat" 已添加 \(portal: FAT, cluster: default\)\n默认环境已设为 "fat"（已写入用户配置: .*config\.json）\n$/);
+test('profileAdd：--default 追加默认 profile 提示并写入默认值', async () => {
+  const { stdout } = await withOutput(() => commands.profileAdd('fat', { 'base-url': 'http://p', default: true }));
+  assert.match(stdout, /^profile "fat" 已添加 \(portal: FAT, cluster: default\)\n默认 profile 已设为 "fat"（已写入用户配置: .*config\.json）\n$/);
   assert.equal(readJSON(userConfigFile).default, 'fat');
 });
 
-test('envAdd：--json 输出结构化结果', async () => {
-  const { stdout } = await withOutput(() => commands.envAdd('fat', { 'base-url': 'http://p', default: true, json: true }));
+test('profileAdd：--json 输出结构化结果', async () => {
+  const { stdout } = await withOutput(() => commands.profileAdd('fat', { 'base-url': 'http://p', default: true, json: true }));
   const data = JSON.parse(stdout);
   assert.equal(data.name, 'fat');
   assert.equal(data.portalEnv, 'FAT');
@@ -111,72 +111,72 @@ test('envAdd：--json 输出结构化结果', async () => {
   assert.match(data.defaultPath, /config\.json$/);
 });
 
-test('envAdd：配置文件损坏时预检抛错且不写入', async () => {
+test('profileAdd：配置文件损坏时预检抛错且不写入', async () => {
   writeJSONFile(userConfigFile, {});
   writeFileSync(userConfigFile, '{broken', 'utf8');
-  await assert.rejects(withOutput(() => commands.envAdd('fat', { 'base-url': 'http://p' })), /配置文件损坏/);
+  await assert.rejects(withOutput(() => commands.profileAdd('fat', { 'base-url': 'http://p' })), /配置文件损坏/);
   assert.equal(readFileSync(userConfigFile, 'utf8'), '{broken');
 });
 
-test('envRm：环境不存在时报错', async () => {
-  await assert.rejects(withOutput(() => commands.envRm('ghost')), /环境 "ghost" 不存在/);
+test('profileRm：profile 不存在时报错', async () => {
+  await assert.rejects(withOutput(() => commands.profileRm('ghost')), /profile "ghost" 不存在/);
 });
 
-test('envRm：删除用户配置并清除登录状态', async () => {
+test('profileRm：删除用户配置并清除登录状态', async () => {
   seedDev();
-  const { stdout } = await withOutput(() => commands.envRm('dev'));
-  assert.equal(stdout, '环境 "dev" 已删除（从用户配置中移除）\n');
-  assert.deepEqual(readJSON(userConfigFile).environments, {});
+  const { stdout } = await withOutput(() => commands.profileRm('dev'));
+  assert.equal(stdout, 'profile "dev" 已删除（从用户配置中移除）\n');
+  assert.deepEqual(readJSON(userConfigFile).profiles, {});
   assert.deepEqual(readJSON(sessionFile), {});
 });
 
-test('envRm：--json 输出结构化结果', async () => {
+test('profileRm：--json 输出结构化结果', async () => {
   seedDev();
-  const { stdout } = await withOutput(() => commands.envRm('dev', { json: true }));
+  const { stdout } = await withOutput(() => commands.profileRm('dev', { json: true }));
   assert.deepEqual(JSON.parse(stdout), { name: 'dev', removedFrom: ['用户配置'] });
 });
 
-test('envRm：用户与项目配置同时命中', async () => {
+test('profileRm：用户与项目配置同时命中', async () => {
   seedDev();
   const caseDir = iso.caseDir();
-  seedProjectConfig(caseDir, { default: 'dev', environments: { dev: { baseUrl: 'http://p' } } });
+  seedProjectConfig(caseDir, { default: 'dev', profiles: { dev: { baseUrl: 'http://p' } } });
   process.chdir(caseDir);
-  const { stdout } = await withOutput(() => commands.envRm('dev'));
-  assert.equal(stdout, '环境 "dev" 已删除（从用户配置、项目配置中移除）\n');
+  const { stdout } = await withOutput(() => commands.profileRm('dev'));
+  assert.equal(stdout, 'profile "dev" 已删除（从用户配置、项目配置中移除）\n');
 });
 
-test('envRm：仅项目配置且用户目录不存在时正常删除（回归 clearSession ENOENT）', async () => {
+test('profileRm：仅项目配置且用户目录不存在时正常删除（回归 clearSession ENOENT）', async () => {
   const caseDir = iso.caseDir();
-  seedProjectConfig(caseDir, { environments: { dev: { baseUrl: 'http://p' } } });
+  seedProjectConfig(caseDir, { profiles: { dev: { baseUrl: 'http://p' } } });
   process.chdir(caseDir);
   assert.equal(existsSync(join(iso.home, '.apollo-cli')), false);
-  const { stdout } = await withOutput(() => commands.envRm('dev'));
-  assert.equal(stdout, '环境 "dev" 已删除（从项目配置中移除）\n');
+  const { stdout } = await withOutput(() => commands.profileRm('dev'));
+  assert.equal(stdout, 'profile "dev" 已删除（从项目配置中移除）\n');
   assert.equal(existsSync(join(iso.home, '.apollo-cli')), false);
 });
 
-test('envDefault：环境不存在时报错', async () => {
+test('profileDefault：profile 不存在时报错', async () => {
   seedDev();
-  await assert.rejects(withOutput(() => commands.envDefault('ghost')), /环境 "ghost" 不存在/);
+  await assert.rejects(withOutput(() => commands.profileDefault('ghost')), /profile "ghost" 不存在/);
 });
 
-test('envDefault：成功写入用户配置并输出路径', async () => {
-  seedUserConfig(iso.home, { environments: { fat: { baseUrl: 'http://p' } } });
-  const { stdout } = await withOutput(() => commands.envDefault('fat'));
-  assert.match(stdout, /^默认环境已设为 "fat"（已写入用户配置: .*config\.json）\n$/);
+test('profileDefault：成功写入用户配置并输出路径', async () => {
+  seedUserConfig(iso.home, { profiles: { fat: { baseUrl: 'http://p' } } });
+  const { stdout } = await withOutput(() => commands.profileDefault('fat'));
+  assert.match(stdout, /^默认 profile 已设为 "fat"（已写入用户配置: .*config\.json）\n$/);
   assert.equal(readJSON(userConfigFile).default, 'fat');
 });
 
-test('envDefault：--json 输出结构化结果', async () => {
-  seedUserConfig(iso.home, { environments: { fat: { baseUrl: 'http://p' } } });
-  const { stdout } = await withOutput(() => commands.envDefault('fat', { json: true }));
+test('profileDefault：--json 输出结构化结果', async () => {
+  seedUserConfig(iso.home, { profiles: { fat: { baseUrl: 'http://p' } } });
+  const { stdout } = await withOutput(() => commands.profileDefault('fat', { json: true }));
   const data = JSON.parse(stdout);
   assert.equal(data.name, 'fat');
   assert.equal(data.scope, '用户配置');
   assert.match(data.path, /config\.json$/);
 });
 
-test('logout：清除指定环境登录状态', async () => {
+test('logout：清除指定 profile 登录状态', async () => {
   seedDev();
   const { stdout } = await withOutput(() => commands.logout(null, {}));
   assert.equal(stdout, '已清除 dev 的登录状态\n');
@@ -186,20 +186,20 @@ test('logout：清除指定环境登录状态', async () => {
 test('logout：--json 输出结构化结果', async () => {
   seedDev();
   const { stdout } = await withOutput(() => commands.logout(null, { json: true }));
-  assert.deepEqual(JSON.parse(stdout), { env: 'dev' });
+  assert.deepEqual(JSON.parse(stdout), { profile: 'dev' });
 });
 
 test('login：--json 输出结构化结果', async t => {
   seedDev();
   fetchStub(t, (record, idx) => (idx === 0 ? redirectResponse('/apps', ['JSESSIONID=cli']) : jsonResponse([])));
   const { stdout } = await withOutput(() => commands.login(null, { username: 'u', password: 'p', json: true }));
-  assert.deepEqual(JSON.parse(stdout), { env: 'dev', baseUrl: portal, username: 'u' });
+  assert.deepEqual(JSON.parse(stdout), { profile: 'dev', baseUrl: portal, username: 'u' });
 });
 
-test('login：环境名含特殊字符时提示与实际读取一致的变量名', async () => {
+test('login：profile 名含特殊字符时提示与实际读取一致的变量名', async () => {
   seedUserConfig(iso.home, {
     default: 'fat-2',
-    environments: { 'fat-2': { baseUrl: portal, portalEnv: 'FAT_2' } }
+    profiles: { 'fat-2': { baseUrl: portal, portalEnv: 'FAT_2' } }
   });
   await assert.rejects(withOutput(() => commands.login(null, {})), err => {
     return err.message.includes('APOLLO_FAT_2_USERNAME/PASSWORD') && !err.message.includes('FAT-2');
@@ -824,22 +824,55 @@ test('configSet：文件型路径无效与值解析失败', async t => {
   assert.equal(calls2.length, 2);
 });
 
-// ---- 环境选择 ----
+// ---- profile 选择 ----
 
-test('APOLLO_ENV 环境变量选择目标环境', async t => {
+function seedThreeProfiles() {
   seedUserConfig(iso.home, {
     default: 'dev',
-    environments: {
+    profiles: {
       dev: { baseUrl: portal, portalEnv: 'DEV' },
-      uat: { baseUrl: 'http://uat.test', portalEnv: 'UAT' }
+      uat: { baseUrl: 'http://uat.test', portalEnv: 'UAT' },
+      sit: { baseUrl: 'http://sit.test', portalEnv: 'SIT' }
     }
   });
-  seedSession(iso.home, 'dev', { baseUrl: portal, cookie: 'c1' });
-  seedSession(iso.home, 'uat', { baseUrl: 'http://uat.test', cookie: 'c2' });
+  // seedSession 每次整体覆写，这里需一次写入三份会话
+  writeJSONFile(sessionFile, {
+    dev: { baseUrl: portal, cookie: 'c1' },
+    uat: { baseUrl: 'http://uat.test', cookie: 'c2' },
+    sit: { baseUrl: 'http://sit.test', cookie: 'c3' }
+  });
+}
+
+test('APOLLO_PROFILE 单独生效', async t => {
+  seedThreeProfiles();
+  const restore = setEnv({ APOLLO_PROFILE: 'uat' });
+  try {
+    const calls = fetchStub(t, () => jsonResponse([]));
+    await withOutput(() => commands.configList('app', { json: true }));
+    assert.equal(calls[0].url, 'http://uat.test/apps/app/envs/UAT/clusters/default/namespaces/application/items');
+  } finally {
+    restore();
+  }
+});
+
+test('APOLLO_ENV 不再生效，落到默认 profile', async t => {
+  seedThreeProfiles();
   const restore = setEnv({ APOLLO_ENV: 'uat' });
   try {
     const calls = fetchStub(t, () => jsonResponse([]));
     await withOutput(() => commands.configList('app', { json: true }));
+    assert.equal(calls[0].url, `${portal}/apps/app/envs/DEV/clusters/default/namespaces/application/items`);
+  } finally {
+    restore();
+  }
+});
+
+test('opts.profile 优先级高于 APOLLO_PROFILE', async t => {
+  seedThreeProfiles();
+  const restore = setEnv({ APOLLO_PROFILE: 'sit' });
+  try {
+    const calls = fetchStub(t, () => jsonResponse([]));
+    await withOutput(() => commands.configList('app', { json: true, profile: 'uat' }));
     assert.equal(calls[0].url, 'http://uat.test/apps/app/envs/UAT/clusters/default/namespaces/application/items');
   } finally {
     restore();

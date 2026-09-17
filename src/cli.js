@@ -10,18 +10,18 @@ const HELP = `apollo-cli — Apollo 配置中心命令行工具
   apollo-cli <命令> [参数]
 
 登录/登出:
-  login  [env]                 登录并保存 cookie
-  logout [env]                 清除环境登录状态
+  login  [profile]             登录并保存 cookie
+  logout [profile]             清除 profile 登录状态
 
-环境管理:
-  env list                     列出环境
-  env add <name> --base-url    新增环境
+profile 管理:
+  profile list                 列出 profile
+  profile add <name> --base-url    新增 profile
     --base-url <url>               （必填）portal 地址
-    --portal-env <env>              Apollo 内部环境名，默认 CLI 环境名大写
+    --portal-env <env>              Apollo 内部环境名，默认 profile 名大写
     --cluster <name>                默认集群，默认 "default"
-    --default                       设为默认环境
-  env rm <name>                删除环境
-  env default <name>           设为默认环境
+    --default                       设为默认 profile
+  profile rm <name>            删除 profile
+  profile default <name>       设为默认 profile
 
 命名空间:
   ns ls <appId>                列出命名空间
@@ -45,17 +45,17 @@ const HELP = `apollo-cli — Apollo 配置中心命令行工具
     --limit <n>                     条数，默认 10
 
 全局选项（可放在子命令前或后）:
-  -e, --env <name>              选择 CLI 环境（默认取自 config.default）
-  --cluster <name>              集群，默认读取环境配置（未配置则 "default"）
+  -p, --profile <name>          选择 profile（默认取自 config.default）
+  --cluster <name>              集群，默认读取 profile 配置（未配置则 "default"）
   -n, --namespace <name>        命名空间，默认 "application"
   --json                        输出 JSON 格式（读写命令均支持）
   -V, --version                 显示版本号
 
 示例:
-  apollo-cli env add fat --base-url http://portal.example.com:8070 --default
+  apollo-cli profile add fat --base-url http://portal.example.com:8070 --default
   apollo-cli login fat
   apollo-cli config ls MyApp -n application
-  apollo-cli --json config get MyApp timeout -e fat
+  apollo-cli --json config get MyApp timeout -p fat
   apollo-cli config set MyApp timeout 5000 --comment "update timeout"
   apollo-cli config set MyApp 'server.ports[0]' 8080 -n app.yml   # 文件型命名空间按字段路径（含 [] 的路径建议加引号，避免 shell glob）
   apollo-cli config publish MyApp --title "v1.0.1" --emergency
@@ -73,7 +73,7 @@ function parseCfg(extra = {}) {
     strict: true,
     options: {
       help: { type: 'boolean', short: 'h', default: false },
-      env: { type: 'string', short: 'e' },
+      profile: { type: 'string', short: 'p' },
       cluster: { type: 'string' },
       namespace: { type: 'string', short: 'n', default: 'application' },
       json: { type: 'boolean', default: false },
@@ -98,10 +98,10 @@ export async function run() {
 }
 
 // 取值型全局选项：扫描前置选项时需连带跳过其参数值
-const GLOBAL_VALUE_OPTS = new Set(['-e', '--env', '-n', '--namespace', '--cluster']);
+const GLOBAL_VALUE_OPTS = new Set(['-p', '--profile', '-n', '--namespace', '--cluster']);
 const STOP_TOKENS = new Set(['-h', '--help', '-V', '--version', '--']);
 
-/** 把命令前的全局选项与命令本身分开：apollo-cli --json -e fat config ls App */
+/** 把命令前的全局选项与命令本身分开：apollo-cli --json -p fat config ls App */
 function splitGlobalPrefix(raw) {
   const prefix = [];
   let i = 0;
@@ -140,7 +140,7 @@ async function main(raw) {
   if (cmd === undefined) {
     if (raw.length === 0) printHelp();
     parseCli({ args: prefix, ...parseCfg() }); // 前缀选项非法时优先报选项错误
-    die('缺少命令。可用命令: login, logout, env, ns, config');
+    die('缺少命令。可用命令: login, logout, profile, ns, config');
   }
   if (cmd === '--help' || cmd === '-h') printHelp();
   if (cmd === '--version' || cmd === '-V') {
@@ -158,10 +158,10 @@ async function main(raw) {
       const p = parseCli({ args, ...parseCfg() });
       return runCommands.logout(p.positionals[0] || null, p.values);
     }
-    case 'env': return handleEnv(args);
+    case 'profile': return handleProfile(args);
     case 'ns': return handleNs(args);
     case 'config': return handleConfig(args);
-    default: die(`未知命令: "${cmd}"\n可用命令: login, logout, env, ns, config`);
+    default: die(`未知命令: "${cmd}"\n可用命令: login, logout, profile, ns, config`);
   }
 }
 
@@ -175,40 +175,40 @@ function helpText(text) {
   throw new HelpExit();
 }
 
-function handleEnv(rawArgs) {
+function handleProfile(rawArgs) {
   const { prefix, rest } = splitGlobalPrefix(rawArgs);
   const sub = rest[0];
   if (sub === undefined || sub === '--help' || sub === '-h') {
     if (prefix.length > 0) parseCli({ args: prefix, ...parseCfg() });
     helpText(`用法:
-  apollo-cli env list
-  apollo-cli env add <name> --base-url <url> [--portal-env ENV] [--cluster CLUSTER] [--default]
-  apollo-cli env rm <name>
-  apollo-cli env default <name>\n`);
+  apollo-cli profile list
+  apollo-cli profile add <name> --base-url <url> [--portal-env ENV] [--cluster CLUSTER] [--default]
+  apollo-cli profile rm <name>
+  apollo-cli profile default <name>\n`);
   }
   const args = [...prefix, ...rest.slice(1)];
   switch (sub) {
     case 'list': {
       const p = parseCli({ args, ...parseCfg() });
-      return runCommands.envList(p.values);
+      return runCommands.profileList(p.values);
     }
     case 'add': {
       const p = parseCli({ args, ...parseCfg({ 'base-url': { type: 'string' }, 'portal-env': { type: 'string' }, default: { type: 'boolean', default: false } }) });
-      const [name] = pos(p, 1, 'env add <name> --base-url <url>');
+      const [name] = pos(p, 1, 'profile add <name> --base-url <url>');
       if (!p.values['base-url']) die('--base-url 是必填参数');
-      return runCommands.envAdd(name, p.values);
+      return runCommands.profileAdd(name, p.values);
     }
     case 'rm': {
       const p = parseCli({ args, ...parseCfg() });
-      const [name] = pos(p, 1, 'env rm <name>');
-      return runCommands.envRm(name, p.values);
+      const [name] = pos(p, 1, 'profile rm <name>');
+      return runCommands.profileRm(name, p.values);
     }
     case 'default': {
       const p = parseCli({ args, ...parseCfg() });
-      const [name] = pos(p, 1, 'env default <name>');
-      return runCommands.envDefault(name, p.values);
+      const [name] = pos(p, 1, 'profile default <name>');
+      return runCommands.profileDefault(name, p.values);
     }
-    default: die(`未知 env 子命令: "${sub}"。可用: list, add, rm, default`);
+    default: die(`未知 profile 子命令: "${sub}"。可用: list, add, rm, default`);
   }
 }
 

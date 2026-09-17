@@ -8,7 +8,7 @@ assertIsolated(iso);
 
 after(() => iso.cleanup());
 
-const base = { envName: 'dev', baseUrl: 'http://portal.test', cookie: 'JSESSIONID=c1' };
+const base = { profileName: 'dev', baseUrl: 'http://portal.test', cookie: 'JSESSIONID=c1' };
 
 test('api：getNamespaces 拼 URL、透传 cookie、GET 无 body', async t => {
   const calls = fetchStub(t, () => jsonResponse([{ a: 1 }]));

@@ -28,28 +28,28 @@ after(() => iso.cleanup());
 // ---- loadConfig ----
 
 test('loadConfig：双缺失返回默认结构', () => {
-  assert.deepEqual(store.loadConfig(), { default: null, environments: {} });
+  assert.deepEqual(store.loadConfig(), { default: null, profiles: {} });
 });
 
 test('loadConfig：仅用户配置时加载用户配置', () => {
-  writeJSONFile(userConfigFile, { default: 'dev', environments: { dev: { baseUrl: 'http://u' } } });
-  assert.deepEqual(store.loadConfig(), { default: 'dev', environments: { dev: { baseUrl: 'http://u' } } });
+  writeJSONFile(userConfigFile, { default: 'dev', profiles: { dev: { baseUrl: 'http://u' } } });
+  assert.deepEqual(store.loadConfig(), { default: 'dev', profiles: { dev: { baseUrl: 'http://u' } } });
 });
 
-test('loadConfig：项目配置整体覆盖同名环境且优先 default', () => {
+test('loadConfig：项目配置整体覆盖同名 profile 且优先 default', () => {
   writeJSONFile(userConfigFile, {
     default: 'dev',
-    environments: { dev: { baseUrl: 'http://user' }, keep: { baseUrl: 'http://keep' } }
+    profiles: { dev: { baseUrl: 'http://user' }, keep: { baseUrl: 'http://keep' } }
   });
   const caseDir = iso.caseDir();
   writeJSONFile(join(caseDir, 'apollo-cli.config.json'), {
     default: 'uat',
-    environments: { dev: { baseUrl: 'http://project' }, uat: { baseUrl: 'http://uat' } }
+    profiles: { dev: { baseUrl: 'http://project' }, uat: { baseUrl: 'http://uat' } }
   });
   process.chdir(caseDir);
   assert.deepEqual(store.loadConfig(), {
     default: 'uat',
-    environments: {
+    profiles: {
       dev: { baseUrl: 'http://project' },
       keep: { baseUrl: 'http://keep' },
       uat: { baseUrl: 'http://uat' }
@@ -94,69 +94,69 @@ test('loadConfig：项目配置路径不可读时抛读取失败', () => {
   );
 });
 
-// ---- resolveEnv ----
+// ---- resolveProfile ----
 
-test('resolveEnv：显式环境命中返回配置与上下文', () => {
-  writeJSONFile(userConfigFile, { environments: { dev: { baseUrl: 'http://d' } } });
-  const result = store.resolveEnv('dev');
-  assert.equal(result.envName, 'dev');
+test('resolveProfile：显式 profile 命中返回配置与上下文', () => {
+  writeJSONFile(userConfigFile, { profiles: { dev: { baseUrl: 'http://d' } } });
+  const result = store.resolveProfile('dev');
+  assert.equal(result.profileName, 'dev');
   assert.deepEqual(result.config, { baseUrl: 'http://d' });
-  assert.deepEqual(result.configFile, { default: null, environments: { dev: { baseUrl: 'http://d' } } });
+  assert.deepEqual(result.configFile, { default: null, profiles: { dev: { baseUrl: 'http://d' } } });
 });
 
-test('resolveEnv：显式环境未配置时报错并列出可用环境', () => {
-  writeJSONFile(userConfigFile, { environments: { dev: {}, uat: {} } });
-  assert.throws(() => store.resolveEnv('fat'), /环境 "fat" 未配置。可用: dev, uat/);
+test('resolveProfile：显式 profile 未配置时报错并列出可用 profile', () => {
+  writeJSONFile(userConfigFile, { profiles: { dev: {}, uat: {} } });
+  assert.throws(() => store.resolveProfile('fat'), /profile "fat" 未配置。可用: dev, uat/);
 });
 
-test('resolveEnv：无环境时报错并给出添加指引', () => {
+test('resolveProfile：无 profile 时报错并给出添加指引', () => {
   assert.throws(
-    () => store.resolveEnv(null),
-    err => err.message.includes('未配置任何环境。请先执行 "apollo-cli env add <name> --base-url <url>"')
+    () => store.resolveProfile(null),
+    err => err.message.includes('未配置任何 profile。请先执行 "apollo-cli profile add <name> --base-url <url>"')
   );
   // 显式名称在空配置下同样报"未配置"，可用列表为空
-  assert.throws(() => store.resolveEnv('fat'), /环境 "fat" 未配置。可用: $/);
+  assert.throws(() => store.resolveProfile('fat'), /profile "fat" 未配置。可用: $/);
 });
 
-test('resolveEnv：无参时取 default', () => {
-  writeJSONFile(userConfigFile, { default: 'uat', environments: { dev: { n: 1 }, uat: { n: 2 } } });
-  assert.equal(store.resolveEnv(null).envName, 'uat');
+test('resolveProfile：无参时取 default', () => {
+  writeJSONFile(userConfigFile, { default: 'uat', profiles: { dev: { n: 1 }, uat: { n: 2 } } });
+  assert.equal(store.resolveProfile(null).profileName, 'uat');
 });
 
-test('resolveEnv：default 指向不存在的环境时报错', () => {
-  writeJSONFile(userConfigFile, { default: 'ghost', environments: { dev: {} } });
-  assert.throws(() => store.resolveEnv(null), /默认环境 "ghost" 不存在/);
+test('resolveProfile：default 指向不存在的 profile 时报错', () => {
+  writeJSONFile(userConfigFile, { default: 'ghost', profiles: { dev: {} } });
+  assert.throws(() => store.resolveProfile(null), /默认 profile "ghost" 不存在/);
 });
 
-test('resolveEnv：无 default 时取第一个环境（插入序）', () => {
-  writeJSONFile(userConfigFile, { environments: { uat: { n: 2 }, dev: { n: 1 } } });
-  assert.equal(store.resolveEnv(null).envName, 'uat');
+test('resolveProfile：无 default 时取第一个 profile（插入序）', () => {
+  writeJSONFile(userConfigFile, { profiles: { uat: { n: 2 }, dev: { n: 1 } } });
+  assert.equal(store.resolveProfile(null).profileName, 'uat');
 });
 
-// ---- getAllEnvs / saveUserConfig ----
+// ---- getAllProfiles / saveUserConfig ----
 
-test('getAllEnvs：返回合并后的环境与默认值', () => {
-  writeJSONFile(userConfigFile, { default: 'dev', environments: { dev: { baseUrl: 'http://u' } } });
-  assert.deepEqual(store.getAllEnvs(), { envs: { dev: { baseUrl: 'http://u' } }, default: 'dev' });
+test('getAllProfiles：返回合并后的 profile 与默认值', () => {
+  writeJSONFile(userConfigFile, { default: 'dev', profiles: { dev: { baseUrl: 'http://u' } } });
+  assert.deepEqual(store.getAllProfiles(), { profiles: { dev: { baseUrl: 'http://u' } }, default: 'dev' });
 });
 
 test('saveUserConfig：首次写入自动建目录且不产生 default 键', () => {
   const envData = { baseUrl: 'http://p', portalEnv: 'DEV', cluster: 'default' };
-  store.saveUserConfig({ environments: { dev: envData } });
+  store.saveUserConfig({ profiles: { dev: envData } });
   // data.default === undefined 且无既有文件 → default 为 undefined，序列化时被省略
-  assert.equal(readFileSync(userConfigFile, 'utf8'), JSON.stringify({ environments: { dev: envData } }, null, 2) + '\n');
+  assert.equal(readFileSync(userConfigFile, 'utf8'), JSON.stringify({ profiles: { dev: envData } }, null, 2) + '\n');
   assert.equal(existsSync(join(userDir, `config.json.${process.pid}.tmp`)), false);
 });
 
-test('saveUserConfig：浅合并保留既有环境并覆盖同名', () => {
+test('saveUserConfig：浅合并保留既有 profile 并覆盖同名', () => {
   writeJSONFile(userConfigFile, {
     default: 'dev',
-    environments: { dev: { baseUrl: 'http://a' }, old: { baseUrl: 'http://o' } }
+    profiles: { dev: { baseUrl: 'http://a' }, old: { baseUrl: 'http://o' } }
   });
-  store.saveUserConfig({ environments: { dev: { baseUrl: 'http://b' }, uat: { baseUrl: 'http://u' } } });
+  store.saveUserConfig({ profiles: { dev: { baseUrl: 'http://b' }, uat: { baseUrl: 'http://u' } } });
   assert.deepEqual(readJSON(userConfigFile), {
     default: 'dev',
-    environments: {
+    profiles: {
       dev: { baseUrl: 'http://b' },
       old: { baseUrl: 'http://o' },
       uat: { baseUrl: 'http://u' }
@@ -165,90 +165,90 @@ test('saveUserConfig：浅合并保留既有环境并覆盖同名', () => {
 });
 
 test('saveUserConfig：default 传 null 可置空，不传则保留', () => {
-  store.saveUserConfig({ default: null, environments: {} });
+  store.saveUserConfig({ default: null, profiles: {} });
   assert.equal(readJSON(userConfigFile).default, null);
-  store.saveUserConfig({ environments: {} });
+  store.saveUserConfig({ profiles: {} });
   assert.equal(readJSON(userConfigFile).default, null);
 
-  writeJSONFile(userConfigFile, { default: 'dev', environments: {} });
-  store.saveUserConfig({ environments: {} });
+  writeJSONFile(userConfigFile, { default: 'dev', profiles: {} });
+  store.saveUserConfig({ profiles: {} });
   assert.equal(readJSON(userConfigFile).default, 'dev');
 });
 
-// ---- removeEnv / setDefaultEnv ----
+// ---- removeProfile / setDefaultProfile ----
 
-test('removeEnv：仅用户配置命中时返回用户 scope 并置空 default', () => {
+test('removeProfile：仅用户配置命中时返回用户 scope 并置空 default', () => {
   writeJSONFile(userConfigFile, {
     default: 'dev',
-    environments: { dev: { baseUrl: 'http://d' }, uat: { baseUrl: 'http://u' } }
+    profiles: { dev: { baseUrl: 'http://d' }, uat: { baseUrl: 'http://u' } }
   });
-  assert.deepEqual(store.removeEnv('dev'), ['用户配置']);
-  assert.deepEqual(readJSON(userConfigFile), { default: null, environments: { uat: { baseUrl: 'http://u' } } });
+  assert.deepEqual(store.removeProfile('dev'), ['用户配置']);
+  assert.deepEqual(readJSON(userConfigFile), { default: null, profiles: { uat: { baseUrl: 'http://u' } } });
 });
 
-test('removeEnv：仅项目配置命中时返回项目 scope', () => {
+test('removeProfile：仅项目配置命中时返回项目 scope', () => {
   const caseDir = iso.caseDir();
-  writeJSONFile(join(caseDir, 'apollo-cli.config.json'), { environments: { dev: { baseUrl: 'http://p' } } });
+  writeJSONFile(join(caseDir, 'apollo-cli.config.json'), { profiles: { dev: { baseUrl: 'http://p' } } });
   process.chdir(caseDir);
-  assert.deepEqual(store.removeEnv('dev'), ['项目配置']);
-  assert.deepEqual(readJSON(join(caseDir, 'apollo-cli.config.json')), { environments: {} });
+  assert.deepEqual(store.removeProfile('dev'), ['项目配置']);
+  assert.deepEqual(readJSON(join(caseDir, 'apollo-cli.config.json')), { profiles: {} });
   assert.equal(existsSync(userConfigFile), false);
 });
 
-test('removeEnv：两处命中时按用户、项目顺序返回', () => {
-  writeJSONFile(userConfigFile, { default: 'dev', environments: { dev: {} } });
+test('removeProfile：两处命中时按用户、项目顺序返回', () => {
+  writeJSONFile(userConfigFile, { default: 'dev', profiles: { dev: {} } });
   const caseDir = iso.caseDir();
-  writeJSONFile(join(caseDir, 'apollo-cli.config.json'), { default: 'dev', environments: { dev: {} } });
+  writeJSONFile(join(caseDir, 'apollo-cli.config.json'), { default: 'dev', profiles: { dev: {} } });
   process.chdir(caseDir);
-  assert.deepEqual(store.removeEnv('dev'), ['用户配置', '项目配置']);
-  assert.deepEqual(readJSON(userConfigFile), { default: null, environments: {} });
-  assert.deepEqual(readJSON(join(caseDir, 'apollo-cli.config.json')), { default: null, environments: {} });
+  assert.deepEqual(store.removeProfile('dev'), ['用户配置', '项目配置']);
+  assert.deepEqual(readJSON(userConfigFile), { default: null, profiles: {} });
+  assert.deepEqual(readJSON(join(caseDir, 'apollo-cli.config.json')), { default: null, profiles: {} });
 });
 
-test('removeEnv：都不存在时返回空数组', () => {
-  assert.deepEqual(store.removeEnv('ghost'), []);
+test('removeProfile：都不存在时返回空数组', () => {
+  assert.deepEqual(store.removeProfile('ghost'), []);
 });
 
-test('removeEnv：写回项目文件时保留额外顶层键', () => {
+test('removeProfile：写回项目文件时保留额外顶层键', () => {
   const caseDir = iso.caseDir();
   writeJSONFile(join(caseDir, 'apollo-cli.config.json'), {
     name: 'my-project',
     default: 'dev',
-    environments: { dev: {} }
+    profiles: { dev: {} }
   });
   process.chdir(caseDir);
-  store.removeEnv('dev');
+  store.removeProfile('dev');
   assert.deepEqual(readJSON(join(caseDir, 'apollo-cli.config.json')), {
     name: 'my-project',
     default: null,
-    environments: {}
+    profiles: {}
   });
 });
 
-test('setDefaultEnv：项目已声明 default 时写项目', () => {
+test('setDefaultProfile：项目已声明 default 时写项目', () => {
   const caseDir = iso.caseDir();
   const projectFile = join(caseDir, 'apollo-cli.config.json');
-  writeJSONFile(projectFile, { default: 'dev', environments: {} });
+  writeJSONFile(projectFile, { default: 'dev', profiles: {} });
   process.chdir(caseDir);
-  const result = store.setDefaultEnv('uat');
+  const result = store.setDefaultProfile('uat');
   assert.equal(resolve(result.path), resolve(projectFile));
   assert.equal(result.scope, '项目配置');
   assert.equal(readJSON(projectFile).default, 'uat');
   assert.equal(existsSync(userConfigFile), false);
 });
 
-test('setDefaultEnv：项目存在但无 default 时写用户配置', () => {
+test('setDefaultProfile：项目存在但无 default 时写用户配置', () => {
   const caseDir = iso.caseDir();
-  writeJSONFile(join(caseDir, 'apollo-cli.config.json'), { environments: {} });
+  writeJSONFile(join(caseDir, 'apollo-cli.config.json'), { profiles: {} });
   process.chdir(caseDir);
-  const result = store.setDefaultEnv('uat');
+  const result = store.setDefaultProfile('uat');
   assert.equal(result.scope, '用户配置');
   assert.equal(resolve(result.path), resolve(userConfigFile));
-  assert.deepEqual(readJSON(userConfigFile), { environments: {}, default: 'uat' });
+  assert.deepEqual(readJSON(userConfigFile), { profiles: {}, default: 'uat' });
 });
 
-test('setDefaultEnv：无项目配置时写用户配置', () => {
-  const result = store.setDefaultEnv('uat');
+test('setDefaultProfile：无项目配置时写用户配置', () => {
+  const result = store.setDefaultProfile('uat');
   assert.equal(result.scope, '用户配置');
   assert.equal(resolve(result.path), resolve(userConfigFile));
   assert.equal(readJSON(userConfigFile).default, 'uat');
@@ -262,7 +262,7 @@ test('saveSession：首次写入按格式落盘', () => {
   assert.equal(readFileSync(sessionFile, 'utf8'), JSON.stringify({ dev: data }, null, 2) + '\n');
 });
 
-test('saveSession：多环境并存互不覆盖', () => {
+test('saveSession：多 profile 并存互不覆盖', () => {
   const d1 = { baseUrl: 'http://d', cookie: 'c1' };
   const d2 = { baseUrl: 'http://u', cookie: 'c2' };
   store.saveSession('dev', d1);
@@ -288,7 +288,7 @@ test('loadSession：损坏 JSON 警告一次并返回空对象', async () => {
   assert.equal(second.stderr, '');
 });
 
-test('clearSession：只清除目标环境', () => {
+test('clearSession：只清除目标 profile', () => {
   store.saveSession('dev', { cookie: 'c1' });
   store.saveSession('uat', { cookie: 'c2' });
   store.clearSession('dev');

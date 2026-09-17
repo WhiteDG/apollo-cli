@@ -1,9 +1,9 @@
 import { loadDotEnv } from './dotenv.js';
 import {
-  resolveEnv, getAllEnvs, saveUserConfig, removeEnv,
-  loadSession, saveSession, clearSession, setDefaultEnv
+  resolveProfile, getAllProfiles, saveUserConfig, removeProfile,
+  loadSession, saveSession, clearSession, setDefaultProfile
 } from './store.js';
-import { login as authLogin, resolveCredentials, ensureSession, envVarPrefix } from './auth.js';
+import { login as authLogin, resolveCredentials, ensureSession, profileVarPrefix } from './auth.js';
 import * as api from './api.js';
 import * as filecontent from './filecontent.js';
 import { output } from './output.js';
@@ -26,22 +26,22 @@ function emit(opts, data, text) {
   process.stdout.write(text + '\n');
 }
 
-function pickEnv(opts) {
-  return opts.env || process.env.APOLLO_ENV || null;
+function pickProfile(opts) {
+  return opts.profile || process.env.APOLLO_PROFILE || null;
 }
 
 /**
- * Resolve environment from optional name hint, return expanded context.
- * Handles auto-selection (default/first env).
+ * Resolve profile from optional name hint, return expanded context.
+ * Handles auto-selection (default/first profile).
  */
-function envCtx(hint, opts = {}) {
+function profileCtx(hint, opts = {}) {
   loadDotEnv();
-  const name = hint || pickEnv(opts) || null;
-  const { envName, config } = resolveEnv(name);
+  const name = hint || pickProfile(opts) || null;
+  const { profileName, config } = resolveProfile(name);
   return {
-    envName,
+    profileName,
     baseUrl: config.baseUrl,
-    portalEnv: config.portalEnv || envName.toUpperCase(),
+    portalEnv: config.portalEnv || profileName.toUpperCase(),
     cluster: opts.cluster || config.cluster || 'default',
     namespace: opts.namespace || 'application',
     config
@@ -50,49 +50,49 @@ function envCtx(hint, opts = {}) {
 
 // ---- login ----
 
-export async function login(envArg, opts) {
+export async function login(profileArg, opts) {
   loadDotEnv();
-  const name = envArg || pickEnv(opts) || null;
-  const { envName, config } = resolveEnv(name);
+  const name = profileArg || pickProfile(opts) || null;
+  const { profileName, config } = resolveProfile(name);
   const baseUrl = config.baseUrl;
-  const creds = resolveCredentials(envName, opts);
+  const creds = resolveCredentials(profileName, opts);
   if (!creds) {
-    die(`未找到凭据。请设置环境变量 ${envVarPrefix(envName)}USERNAME/PASSWORD, 或全局 APOLLO_USERNAME/PASSWORD, 或使用 --username/--password`);
+    die(`未找到凭据。请设置环境变量 ${profileVarPrefix(profileName)}USERNAME/PASSWORD, 或全局 APOLLO_USERNAME/PASSWORD, 或使用 --username/--password`);
   }
-  const cookie = await authLogin(envName, creds, baseUrl);
-  saveSession(envName, { baseUrl, cookie, username: creds.username, savedAt: Date.now() });
-  emit(opts, { env: envName, baseUrl, username: creds.username }, `登录成功 (${envName}: ${baseUrl}) [${creds.username}]`);
+  const cookie = await authLogin(creds, baseUrl);
+  saveSession(profileName, { baseUrl, cookie, username: creds.username, savedAt: Date.now() });
+  emit(opts, { profile: profileName, baseUrl, username: creds.username }, `登录成功 (${profileName}: ${baseUrl}) [${creds.username}]`);
 }
 
 // ---- logout ----
 
-export function logout(envArg, opts = {}) {
-  const ctx = envCtx(envArg, opts);
-  clearSession(ctx.envName);
-  emit(opts, { env: ctx.envName }, `已清除 ${ctx.envName} 的登录状态`);
+export function logout(profileArg, opts = {}) {
+  const ctx = profileCtx(profileArg, opts);
+  clearSession(ctx.profileName);
+  emit(opts, { profile: ctx.profileName }, `已清除 ${ctx.profileName} 的登录状态`);
 }
 
-// ---- env ----
+// ---- profile ----
 
-export function envList(opts = {}) {
-  const { envs, default: def } = getAllEnvs();
+export function profileList(opts = {}) {
+  const { profiles, default: def } = getAllProfiles();
   const sessions = loadSession();
-  const keys = Object.keys(envs);
+  const keys = Object.keys(profiles);
   if (keys.length === 0) {
     if (opts.json) { output([], opts); return; }
-    process.stdout.write('未配置环境。使用 "apollo-cli env add <name> --base-url <url>" 添加\n');
+    process.stdout.write('未配置 profile。使用 "apollo-cli profile add <name> --base-url <url>" 添加\n');
     return;
   }
   const rows = [];
   for (const name of keys) {
-    const e = envs[name];
+    const p = profiles[name];
     const session = sessions[name];
     const isDefault = name === def ? '✓' : '';
-    const loggedIn = session && session.baseUrl === e.baseUrl ? '是' : '否';
+    const loggedIn = session && session.baseUrl === p.baseUrl ? '是' : '否';
     rows.push({
-      环境: name,
-      baseUrl: e.baseUrl,
-      'Apollo环境': e.portalEnv || name.toUpperCase(),
+      profile: name,
+      baseUrl: p.baseUrl,
+      'Apollo环境': p.portalEnv || name.toUpperCase(),
       默认: isDefault,
       已登录: loggedIn
     });
@@ -100,19 +100,19 @@ export function envList(opts = {}) {
   output(rows, opts);
 }
 
-export function envAdd(name, vals) {
+export function profileAdd(name, vals) {
   const portalEnv = vals['portal-env'] || name.toUpperCase();
   const data = {
     baseUrl: vals['base-url'].replace(/\/+$/, ''),
     portalEnv,
     cluster: vals.cluster || 'default'
   };
-  if (vals.default) getAllEnvs(); // 预检：配置文件损坏在此抛错，避免"环境已写、默认未设"的半写入
-  saveUserConfig({ environments: { [name]: data } });
+  if (vals.default) getAllProfiles(); // 预检：配置文件损坏在此抛错，避免"profile 已写、默认未设"的半写入
+  saveUserConfig({ profiles: { [name]: data } });
   let def = null;
-  if (vals.default) def = setDefaultEnv(name);
-  const text = `环境 "${name}" 已添加 (portal: ${portalEnv}, cluster: ${data.cluster})` +
-    (def ? `\n默认环境已设为 "${name}"（已写入${def.scope}: ${def.path}）` : '');
+  if (vals.default) def = setDefaultProfile(name);
+  const text = `profile "${name}" 已添加 (portal: ${portalEnv}, cluster: ${data.cluster})` +
+    (def ? `\n默认 profile 已设为 "${name}"（已写入${def.scope}: ${def.path}）` : '');
   emit(vals, {
     name,
     portalEnv,
@@ -122,31 +122,31 @@ export function envAdd(name, vals) {
   }, text);
 }
 
-export function envRm(name, opts = {}) {
-  const scopes = removeEnv(name);
+export function profileRm(name, opts = {}) {
+  const scopes = removeProfile(name);
   if (scopes.length === 0) {
-    die(`环境 "${name}" 不存在`);
+    die(`profile "${name}" 不存在`);
   }
   clearSession(name);
-  emit(opts, { name, removedFrom: scopes }, `环境 "${name}" 已删除（从${scopes.join('、')}中移除）`);
+  emit(opts, { name, removedFrom: scopes }, `profile "${name}" 已删除（从${scopes.join('、')}中移除）`);
 }
 
-export function envDefault(name, opts = {}) {
-  const { envs } = getAllEnvs();
-  if (!envs[name]) {
-    die(`环境 "${name}" 不存在`);
+export function profileDefault(name, opts = {}) {
+  const { profiles } = getAllProfiles();
+  if (!profiles[name]) {
+    die(`profile "${name}" 不存在`);
   }
-  const { path, scope } = setDefaultEnv(name);
-  emit(opts, { name, scope, path }, `默认环境已设为 "${name}"（已写入${scope}: ${path}）`);
+  const { path, scope } = setDefaultProfile(name);
+  emit(opts, { name, scope, path }, `默认 profile 已设为 "${name}"（已写入${scope}: ${path}）`);
 }
 
 // ---- ns ----
 
 export async function nsList(appId, opts) {
-  const ctx = envCtx(null, opts);
+  const ctx = profileCtx(null, opts);
   try {
-    const cookie = await ensureSession(ctx.envName, ctx.baseUrl, opts);
-    const data = await api.getNamespaces(appId, ctx.portalEnv, ctx.cluster, { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
+    const cookie = await ensureSession(ctx.profileName, ctx.baseUrl, opts);
+    const data = await api.getNamespaces(appId, ctx.portalEnv, ctx.cluster, { profileName: ctx.profileName, baseUrl: ctx.baseUrl, cookie });
     if (!Array.isArray(data) || data.length === 0) {
       if (opts.json) { output([], opts); return; }
       process.stdout.write('没有命名空间\n');
@@ -172,7 +172,7 @@ export async function nsList(appId, opts) {
 async function resolveFieldFormat(appId, ctx, items, cookie) {
   if (!filecontent.isAmbiguousNamespaceItems(items)) return null;
   const nsList = await api.getNamespaces(appId, ctx.portalEnv, ctx.cluster, {
-    envName: ctx.envName,
+    profileName: ctx.profileName,
     baseUrl: ctx.baseUrl,
     cookie
   });
@@ -181,10 +181,10 @@ async function resolveFieldFormat(appId, ctx, items, cookie) {
 }
 
 export async function configList(appId, opts) {
-  const ctx = envCtx(null, opts);
+  const ctx = profileCtx(null, opts);
   try {
-    const cookie = await ensureSession(ctx.envName, ctx.baseUrl, opts);
-    const data = await api.getItems(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
+    const cookie = await ensureSession(ctx.profileName, ctx.baseUrl, opts);
+    const data = await api.getItems(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, { profileName: ctx.profileName, baseUrl: ctx.baseUrl, cookie });
     if (!Array.isArray(data) || data.length === 0) {
       if (opts.json) { output([], opts); return; }
       process.stdout.write('没有配置项\n');
@@ -202,10 +202,10 @@ export async function configList(appId, opts) {
 }
 
 export async function configGet(appId, key, opts) {
-  const ctx = envCtx(null, opts);
+  const ctx = profileCtx(null, opts);
   try {
-    const cookie = await ensureSession(ctx.envName, ctx.baseUrl, opts);
-    const data = await api.getItems(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
+    const cookie = await ensureSession(ctx.profileName, ctx.baseUrl, opts);
+    const data = await api.getItems(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, { profileName: ctx.profileName, baseUrl: ctx.baseUrl, cookie });
     const items = Array.isArray(data) ? data : [];
     const format = await resolveFieldFormat(appId, ctx, items, cookie);
     if (format) {
@@ -233,11 +233,11 @@ export async function configGet(appId, key, opts) {
 }
 
 export async function configSet(appId, key, value, opts) {
-  const ctx = envCtx(null, opts);
+  const ctx = profileCtx(null, opts);
   try {
-    const cookie = await ensureSession(ctx.envName, ctx.baseUrl, opts);
-    const data = await api.getItems(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
-    const session = loadSession()[ctx.envName];
+    const cookie = await ensureSession(ctx.profileName, ctx.baseUrl, opts);
+    const data = await api.getItems(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, { profileName: ctx.profileName, baseUrl: ctx.baseUrl, cookie });
+    const session = loadSession()[ctx.profileName];
     const username = session?.username || '';
     const items = Array.isArray(data) ? data : [];
     const format = await resolveFieldFormat(appId, ctx, items, cookie);
@@ -267,7 +267,7 @@ export async function configSet(appId, key, value, opts) {
           comment: opts.comment || existing.comment || '',
           dataChangeLastModifiedBy: username,
           dataChangeLastModifiedTime: new Date().toISOString()
-        }, { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
+        }, { profileName: ctx.profileName, baseUrl: ctx.baseUrl, cookie });
         emit(opts, base, `字段 "${key}" 已${prior.found ? '更新' : '新增'}（需 config publish 才生效）`);
       } else {
         await api.createItem(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, {
@@ -275,7 +275,7 @@ export async function configSet(appId, key, value, opts) {
           value: next,
           comment: opts.comment || '',
           dataChangeCreatedBy: username
-        }, { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
+        }, { profileName: ctx.profileName, baseUrl: ctx.baseUrl, cookie });
         emit(opts, { ...base, contentItemCreated: true },
           `字段 "${key}" 已新增（已创建配置项 "${filecontent.CONTENT_KEY}"，需 config publish 才生效）`);
       }
@@ -297,7 +297,7 @@ export async function configSet(appId, key, value, opts) {
         comment: opts.comment || existing.comment || '',
         dataChangeLastModifiedBy: username,
         dataChangeLastModifiedTime: new Date().toISOString()
-      }, { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
+      }, { profileName: ctx.profileName, baseUrl: ctx.baseUrl, cookie });
       emit(opts, base, `配置项 "${key}" 已更新（需 config publish 才生效）`);
       return;
     }
@@ -306,16 +306,16 @@ export async function configSet(appId, key, value, opts) {
       value,
       comment: opts.comment || '',
       dataChangeCreatedBy: username
-    }, { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
+    }, { profileName: ctx.profileName, baseUrl: ctx.baseUrl, cookie });
     emit(opts, base, `配置项 "${key}" 已新增（需 config publish 才生效）`);
   } catch (e) { fatal(e); }
 }
 
 export async function configRm(appId, key, opts) {
-  const ctx = envCtx(null, opts);
+  const ctx = profileCtx(null, opts);
   try {
-    const cookie = await ensureSession(ctx.envName, ctx.baseUrl, opts);
-    const data = await api.getItems(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
+    const cookie = await ensureSession(ctx.profileName, ctx.baseUrl, opts);
+    const data = await api.getItems(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, { profileName: ctx.profileName, baseUrl: ctx.baseUrl, cookie });
     const item = Array.isArray(data) ? data.find(i => i.key === key) : null;
     if (!item) {
       die(`配置项 "${key}" 不存在`);
@@ -338,14 +338,14 @@ export async function configRm(appId, key, opts) {
         return;
       }
     }
-    const session = loadSession()[ctx.envName];
-    await api.deleteItem(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, item.id, session?.username || '', { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
+    const session = loadSession()[ctx.profileName];
+    await api.deleteItem(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, item.id, session?.username || '', { profileName: ctx.profileName, baseUrl: ctx.baseUrl, cookie });
     emit(opts, base, `配置项 "${key}" 已删除（需 config publish 才生效）`);
   } catch (e) { fatal(e); }
 }
 
 export async function configPublish(appId, opts) {
-  const ctx = envCtx(null, opts);
+  const ctx = profileCtx(null, opts);
   const now = new Date();
   const defaultTitle = `apollo-cli 发布 ${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   const title = opts.title || defaultTitle;
@@ -364,15 +364,15 @@ export async function configPublish(appId, opts) {
     return;
   }
   try {
-    const cookie = await ensureSession(ctx.envName, ctx.baseUrl, opts);
-    const session = loadSession()[ctx.envName];
+    const cookie = await ensureSession(ctx.profileName, ctx.baseUrl, opts);
+    const session = loadSession()[ctx.profileName];
     const username = session?.username || '';
     const result = await api.publishRelease(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, {
       title,
       comment: opts.comment || '',
       releasedBy: username,
       emergency: opts.emergency || false
-    }, { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
+    }, { profileName: ctx.profileName, baseUrl: ctx.baseUrl, cookie });
     if (result && result.id !== undefined) {
       const t = result.releaseTitle ? `, title: ${result.releaseTitle}` : '';
       emit(opts, { action: 'publish', namespace: ctx.namespace, releaseId: result.id, title: result.releaseTitle || title },
@@ -384,11 +384,11 @@ export async function configPublish(appId, opts) {
 }
 
 export async function configReleases(appId, opts) {
-  const ctx = envCtx(null, opts);
+  const ctx = profileCtx(null, opts);
   const limit = opts.limit || 10;
   try {
-    const cookie = await ensureSession(ctx.envName, ctx.baseUrl, opts);
-    const data = await api.getActiveReleases(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, limit, { envName: ctx.envName, baseUrl: ctx.baseUrl, cookie });
+    const cookie = await ensureSession(ctx.profileName, ctx.baseUrl, opts);
+    const data = await api.getActiveReleases(appId, ctx.portalEnv, ctx.cluster, ctx.namespace, limit, { profileName: ctx.profileName, baseUrl: ctx.baseUrl, cookie });
     const releases = Array.isArray(data) ? data : (data?.content || []);
     if (releases.length === 0) {
       if (opts.json) { output([], opts); return; }

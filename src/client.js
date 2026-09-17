@@ -1,8 +1,8 @@
-import { reLogin, envVarPrefix } from './auth.js';
+import { reLogin, profileVarPrefix } from './auth.js';
 import { fetchWithTimeout, netError } from './http.js';
 
 export async function portalRequest(method, pathname, opts = {}) {
-  const { envName, baseUrl, body, cookie: suppliedCookie } = opts;
+  const { profileName, baseUrl, body, cookie: suppliedCookie } = opts;
 
   async function doFetch(c) {
     const url = `${baseUrl.replace(/\/+$/, '')}${pathname}`;
@@ -29,12 +29,12 @@ export async function portalRequest(method, pathname, opts = {}) {
 
   // Check for session expiry
   if (resp.status === 401 || (resp.status >= 300 && resp.status < 400 && (resp.headers.get('location') || '').includes('/signin'))) {
-    const relogin = await reLogin(envName, baseUrl);
+    const relogin = await reLogin(profileName, baseUrl);
     if (relogin?.cookie) {
       resp = await doFetch(relogin.cookie);
     } else {
       const reason = relogin?.error ? `，自动重新登录失败：${relogin.error}` : '，且未找到可用凭据';
-      throw new Error(`登录已过期${reason}。请执行 "apollo-cli login ${envName}" 或配置 ${envVarPrefix(envName)}USERNAME/PASSWORD`);
+      throw new Error(`登录已过期${reason}。请执行 "apollo-cli login ${profileName}" 或配置 ${profileVarPrefix(profileName)}USERNAME/PASSWORD`);
     }
   }
 

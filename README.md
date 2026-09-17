@@ -9,6 +9,20 @@ Apollo 配置中心命令行工具。通过 Portal 方式登录管理配置项�
 ## 安装
 
 ```bash
+npm i -g github:WhiteDG/apollo-cli#master
+# 或使用 pnpm
+pnpm add -g github:WhiteDG/apollo-cli#master
+```
+
+安装 master 分支最新代码。升级：重跑同一条命令即可（每次安装都会重新拉取 master 最新提交）。如需固定版本，可将 `#master` 换成版本 tag（如 `#v0.1.0`）。
+
+> 注意：不要用 `npm update -g apollo-cli` 升级。npm registry 上已存在同名包 `apollo-cli`（apollostack 的 GraphQL 工具），`npm update` 会按名字从 registry 解析，把它装进来顶替本工具。
+
+### 从源码运行 / 开发
+
+```bash
+git clone https://github.com/WhiteDG/apollo-cli.git
+cd apollo-cli
 pnpm install        # 安装依赖
 pnpm link --global  # 链接后可直接使用 apollo-cli
 # 或直接运行
@@ -17,32 +31,34 @@ node bin/apollo-cli.js --help
 
 ## 快速开始
 
-### 1. 添加环境
+### 1. 添加 profile
+
+profile 是「Portal 地址 + Apollo 环境 + 集群」的命名组合（类似 AWS CLI 的 profile）。
 
 ```bash
-apollo-cli env add fat --base-url http://portal.example.com:8070 --default
+apollo-cli profile add fat --base-url http://portal.example.com:8070 --default
 ```
 
 参数说明：
 - `--base-url`：Portal 地址（必填）
-- `--portal-env`：Apollo 内部环境名，不传则自动从环境名大写（fat → FAT）
+- `--portal-env`：Apollo 内部环境名，不传则自动从 profile 名大写（fat → FAT）
 - `--cluster`：集群名称，默认 `default`
-- `--default`：设为默认环境
+- `--default`：设为默认 profile
 
 ### 2. 配置凭据
 
 创建 `.env` 文件或直接设置环境变量：
 
 ```bash
-# 方式一：环境专属凭据（推荐多环境不同账号）
+# 方式一：profile 专属凭据（推荐多 profile 不同账号）
 export APOLLO_FAT_USERNAME=myuser
 export APOLLO_FAT_PASSWORD=mypass
 
-# 方式二：全局凭据（所有环境共用）
+# 方式二：全局凭据（所有 profile 共用）
 export APOLLO_USERNAME=myuser
 export APOLLO_PASSWORD=mypass
 
-# 方式三：.env 文件（同样支持环境专属和全局）
+# 方式三：.env 文件（同样支持 profile 专属和全局）
 APOLLO_FAT_USERNAME=myuser
 APOLLO_FAT_PASSWORD=mypass
 ```
@@ -53,7 +69,7 @@ APOLLO_FAT_PASSWORD=mypass
 cp .env.example .env   # 然后填入真实凭据
 ```
 
-搜索顺序：`--username/--password`（两者同时传入时优先）→ `APOLLO_<ENV>_USERNAME/PASSWORD` → `APOLLO_USERNAME/PASSWORD`。shell 环境变量优先于 `.env` 文件。
+搜索顺序：`--username/--password`（两者同时传入时优先）→ `APOLLO_<PROFILE>_USERNAME/PASSWORD` → `APOLLO_USERNAME/PASSWORD`。shell 环境变量优先于 `.env` 文件。
 
 ### 3. 登录
 
@@ -117,28 +133,28 @@ apollo-cli config set MyApp 'server.ports[0]' 8080 -n app.yml --string
 
 | 文件 | 位置 | 说明 |
 |---|---|---|
-| 用户配置 | `~/.apollo-cli/config.json` | 环境定义、默认环境 |
+| 用户配置 | `~/.apollo-cli/config.json` | profile 定义、默认 profile |
 | 会话 | `~/.apollo-cli/session.json` | 登录 cookie |
-| 项目配置 | `./apollo-cli.config.json` | 项目级环境定义，与用户配置合并 |
+| 项目配置 | `./apollo-cli.config.json` | 项目级 profile 定义，与用户配置合并 |
 
 ## 环境变量
 
 | 变量 | 用途 |
 |---|---|
-| `APOLLO_ENV` | 默认 CLI 环境名 |
-| `APOLLO_<ENV>_USERNAME` | 环境专属用户名 |
-| `APOLLO_<ENV>_PASSWORD` | 环境专属密码 |
+| `APOLLO_PROFILE` | 默认 CLI profile 名 |
+| `APOLLO_<PROFILE>_USERNAME` | profile 专属用户名 |
+| `APOLLO_<PROFILE>_PASSWORD` | profile 专属密码 |
 | `APOLLO_USERNAME` | 全局用户名（回退） |
 | `APOLLO_PASSWORD` | 全局密码（回退） |
 
 ## 全局选项
 
-全局选项可放在子命令前或子命令后（如 `apollo-cli --json config get MyApp timeout -e fat`）。
+全局选项可放在子命令前或子命令后（如 `apollo-cli --json config get MyApp timeout -p fat`）。
 
 | 选项 | 简写 | 说明 |
 |---|---|---|
-| `--env <name>` | `-e` | CLI 环境名（优先级高于 APOLLO_ENV） |
-| `--cluster <name>` | | 集群名，默认读取环境配置的 cluster |
+| `--profile <name>` | `-p` | profile 名（优先级高于 APOLLO_PROFILE） |
+| `--cluster <name>` | | 集群名，默认读取 profile 配置的 cluster |
 | `--namespace <name>` | `-n` | 命名空间，默认 "application" |
 | `--json` | | JSON 格式输出（读写命令均支持） |
 | `--version` | `-V` | 显示版本号 |
@@ -156,12 +172,12 @@ apollo-cli config set MyApp 'server.ports[0]' 8080 -n app.yml --string
 
 ```
 apollo-cli --version
-apollo-cli login [env] [--username u] [--password p]
-apollo-cli logout [env]
-apollo-cli env list
-apollo-cli env add <name> --base-url <url> [--portal-env ENV] [--cluster CLUSTER] [--default]
-apollo-cli env rm <name>
-apollo-cli env default <name>
+apollo-cli login [profile] [--username u] [--password p]
+apollo-cli logout [profile]
+apollo-cli profile list
+apollo-cli profile add <name> --base-url <url> [--portal-env ENV] [--cluster CLUSTER] [--default]
+apollo-cli profile rm <name>
+apollo-cli profile default <name>
 apollo-cli ns ls <appId>
 apollo-cli config ls <appId> [-n ns]
 apollo-cli config get <appId> <key|path> [-n ns]

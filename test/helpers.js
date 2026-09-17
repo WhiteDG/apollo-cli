@@ -164,6 +164,6 @@ export function seedProjectConfig(cwd, config) {
   writeJSONFile(join(cwd, 'apollo-cli.config.json'), config);
 }
 
-export function seedSession(home, envName, session) {
-  writeJSONFile(join(home, '.apollo-cli', 'session.json'), { [envName]: session });
+export function seedSession(home, profileName, session) {
+  writeJSONFile(join(home, '.apollo-cli', 'session.json'), { [profileName]: session });
 }
