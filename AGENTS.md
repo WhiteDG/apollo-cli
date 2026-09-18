@@ -14,6 +14,7 @@ This file provides guidance to the AI agent when working with code in this repos
 
 - `skills/apollo/` 是随仓库分发的 AI skill（`SKILL.md` + `evals/` + `scripts/apollo-cli.cjs` + `README.md`）：用户机器上有 Node >= 21 即可直接跑自带产物，无需安装本包；skill 不走 npm 分发，`package.json` 的 `files` 无需加 `skills`。
 - SKILL.md 里统一用 `node <SK>/scripts/apollo-cli.cjs <命令>`（`<SK>` = SKILL.md 所在目录的绝对路径；正文没有 `${SKILL_ROOT}` 之类变量，靠文首的解析阶梯得到）。改调用方式时要连同"命令速查/典型流程"一起改。
+- SKILL.md、README、evals 随 skill 独立分发，必须脱离本仓库语境：只讲"技能自带的 CLI 怎么用"，不出现"打包/产物/单文件/npm 安装"等描述（这些只属于仓库文档与 `scripts/build.js`）。
 - 产物已入库，改完源码忘记重打包会让拿到 skill 的用户执行旧版本；`.gitattributes` 把该产物固定为 LF（Windows `core.autocrlf=true` 检出会变 CRLF，导致 `build:check` 误报过期）。
 - 手动跑自带产物做验证时先 `cd` 到临时目录：CLI 按当前目录读写项目级 `apollo-cli.config.json`（含凭据、已 gitignore），在仓库根直接跑写命令（如 `profile add`、默认 profile 变更）会改动仓库里真实的该文件。
 

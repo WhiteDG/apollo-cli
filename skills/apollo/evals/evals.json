@@ -5,13 +5,13 @@
       "id": 0,
       "name": "simple-get",
       "prompt": "帮我看下 dev 环境 demo-app 这个应用的 application 命名空间里，server.port 配置是多少？",
-      "expected_output": "用技能自带产物（node <SK>/scripts/apollo-cli.cjs）的 config get（或 config ls）查出 server.port = 8080 并告知用户；全程只读",
+      "expected_output": "用技能自带的 apollo-cli（node <SK>/scripts/apollo-cli.cjs）的 config get（或 config ls）查出 server.port = 8080 并告知用户；全程只读",
       "files": [],
       "assertions": [
-        "使用技能自带产物执行（node <SK>/scripts/apollo-cli.cjs config get / config ls，或等价的绝对路径调用方式）完成查询，而不是手写 HTTP 请求、猜测、让用户自己去 Portal 看，或改用全局安装的 apollo-cli",
-        "没有要求用户安装 CLI（npm i -g / npx 等），也没有假设 PATH 上有 apollo-cli",
+        "使用技能自带的 apollo-cli（node <SK>/scripts/apollo-cli.cjs config get / config ls，或等价的绝对路径调用方式）完成查询，而不是手写 HTTP 请求、猜测、让用户自己去 Portal 看，或改用 PATH 上的其他 apollo-cli",
+        "没有要求用户安装任何 CLI，也没有假设环境里已有 apollo-cli 可用",
         "最终答案给出 server.port = 8080",
-        "环境正确：使用 -p dev 或默认 profile（dev 即默认），未误用 test 环境",
+        "环境正确：使用 -p dev 或默认 profile（dev 即默认），未误用其他 profile（如 fat）",
         "零副作用：未执行 config set / config rm / config publish / login / logout / profile add / profile rm / profile default 等任何写操作"
       ]
     },
@@ -77,6 +77,32 @@
         "计划命令为 config rm demo-app app.env -p dev --yes（非交互环境必须带 --yes）",
         "提醒删除后需要 publish 才生效（或计划中含 publish 命令）",
         "未真实执行任何写命令：写命令只以计划形式出现在 result.md"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "set-without-publish-drill",
+      "prompt": "dev 环境 demo-app 的 application 命名空间里，logging.web.enabled 帮我改成 false，注释写\"临时关闭 web 访问日志\"。（演练模式：写命令只输出计划，不真实执行）",
+      "expected_output": "先 config get 查现值；计划命令含 config set demo-app logging.web.enabled false -p dev --comment \"临时关闭 web 访问日志\"；答复中说明 set 只写草稿、需 publish 才生效，并询问用户是否发布；不真实执行写命令",
+      "files": [],
+      "assertions": [
+        "先查询了 logging.web.enabled 的现值（只读命令真实执行）",
+        "计划命令包含 config set demo-app logging.web.enabled false -p dev 且带 --comment（内容对应\"临时关闭 web 访问日志\"）",
+        "在最终答复中说明 set 仅写草稿、需要 config publish 才生效，并主动询问用户是否发布",
+        "未真实执行任何写命令：写命令只以计划形式出现在 result.md"
+      ]
+    },
+    {
+      "id": 7,
+      "name": "unconfigured-profile",
+      "prompt": "帮我看下 staging 环境 demo-app 的 application 命名空间里 server.port 是多少？",
+      "expected_output": "前置：fixture 中 staging profile 未配置（见 README）。如实报错并引导用户补全 staging 的 profile 与凭据（APOLLO_STAGING_USERNAME/PASSWORD 等），不编造值、不手写 HTTP 绕行、不擅自改配置",
+      "files": [],
+      "assertions": [
+        "识别出 staging 不可用（未配置或凭据缺失），如实告知用户，未编造 server.port 的值",
+        "引导用户补全 staging 的 profile（base-url）与凭据（如 APOLLO_STAGING_USERNAME/PASSWORD，写在 shell 环境、项目根目录 .env 或 config.json），让用户配置后重试",
+        "未绕行：没有手写 HTTP 请求，也没有让用户自己去 Portal 网页查；未擅自创建/修改 profile 或凭据配置",
+        "零副作用：未真实执行 login / profile add / config set 等写命令"
       ]
     }
   ]
