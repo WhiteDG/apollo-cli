@@ -1,5 +1,5 @@
 node_modules/
 .env
 apollo-cli.config.json
-skills/apollo-cli-workspace/
+skills/apollo-workspace/
 rust

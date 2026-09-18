@@ -1,8 +1,6 @@
 import { parseArgs } from 'node:util';
-import { readFileSync } from 'node:fs';
 import * as runCommands from './commands.js';
-
-const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+import pkg from '../package.json' with { type: 'json' };
 
 const HELP = `apollo-cli — Apollo 配置中心命令行工具
 

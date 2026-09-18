@@ -1,14 +1,15 @@
 {
-  "skill_name": "apollo-cli",
+  "skill_name": "apollo",
   "evals": [
     {
       "id": 0,
       "name": "simple-get",
       "prompt": "帮我看下 dev 环境 demo-app 这个应用的 application 命名空间里，server.port 配置是多少？",
-      "expected_output": "用 apollo-cli 的 config get（或 config ls）查出 server.port = 8080 并告知用户；全程只读",
+      "expected_output": "用技能自带产物（node <SK>/scripts/apollo-cli.cjs）的 config get（或 config ls）查出 server.port = 8080 并告知用户；全程只读",
       "files": [],
       "assertions": [
-        "使用 apollo-cli（或 node bin/apollo-cli.js）的 config get / config ls 完成查询，而不是手写 HTTP 请求、猜测或让用户自己去 Portal 看",
+        "使用技能自带产物执行（node <SK>/scripts/apollo-cli.cjs config get / config ls，或等价的绝对路径调用方式）完成查询，而不是手写 HTTP 请求、猜测、让用户自己去 Portal 看，或改用全局安装的 apollo-cli",
+        "没有要求用户安装 CLI（npm i -g / npx 等），也没有假设 PATH 上有 apollo-cli",
         "最终答案给出 server.port = 8080",
         "环境正确：使用 -p dev 或默认 profile（dev 即默认），未误用 test 环境",
         "零副作用：未执行 config set / config rm / config publish / login / logout / profile add / profile rm / profile default 等任何写操作"
@@ -18,7 +19,7 @@
       "id": 1,
       "name": "yaml-field-path",
       "prompt": "dev 环境 demo-app 有个 cache.yaml 命名空间，帮我看下里面 redisson 缓存列表第一条规则的过期时间是多久？",
-      "expected_output": "识别出这是文件型命名空间，用 apollo-cli config get demo-app 'cache.specs.redisson[0].expires' -n cache.yaml 查出 P7D；全程只读",
+      "expected_output": "识别出这是文件型命名空间，用 node <SK>/scripts/apollo-cli.cjs config get demo-app 'cache.specs.redisson[0].expires' -n cache.yaml 查出 P7D；全程只读",
       "files": [],
       "assertions": [
         "使用 -n cache.yaml 指定文件型命名空间（不是在默认 application 命名空间里找）",
@@ -31,7 +32,7 @@
       "id": 2,
       "name": "yaml-full-content",
       "prompt": "把 dev 环境 demo-app 的 cache.yaml 的完整内容发给我看一下",
-      "expected_output": "用 apollo-cli config ls demo-app -n cache.yaml（可带 --json）拿到整份 YAML 内容并贴给用户；全程只读",
+      "expected_output": "用 node <SK>/scripts/apollo-cli.cjs config ls demo-app -n cache.yaml（可带 --json）拿到整份 YAML 内容并贴给用户；全程只读",
       "files": [],
       "assertions": [
         "最终给出 cache.yaml 的完整 YAML 内容（包含 cache.specs.redisson 列表及多条缓存规则，不是截断的一两条）",
