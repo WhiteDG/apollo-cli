@@ -82,9 +82,9 @@ function sleep(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
-function writeJSON(path, data) {
+function writeJSON(path, data, options = 'utf8') {
   ensureDir(USER_DIR);
-  atomicWrite(path, JSON.stringify(data, null, 2) + '\n', 'utf8');
+  atomicWrite(path, JSON.stringify(data, null, 2) + '\n', options);
 }
 
 // ---- config ----
@@ -128,7 +128,7 @@ export function resolveProfile(profileName) {
   }
 
   // auto-select
-  if (keys.length === 0) return dieMsg('未配置任何 profile。请先执行 "apollo-cli profile add <name> --base-url <url>"');
+  if (keys.length === 0) return dieMsg('未配置任何 profile。请先运行 "apollo-cli setup <环境名>" 完成初始配置（或 "apollo-cli profile add <name> --base-url <url>"）');
   const picked = config.default || keys[0];
   if (!profiles[picked]) return dieMsg(`默认 profile "${picked}" 不存在`);
   return { config: profiles[picked], configFile: config, profileName: picked };
@@ -139,19 +139,32 @@ export function getAllProfiles() {
   return { profiles: config.profiles, default: config.default };
 }
 
-export function saveUserConfig(data) {
+export function userConfigPath() {
+  return USER_CONFIG;
+}
+
+export function loadProjectConfig() {
+  return existsSync(PROJECT_CONFIG) ? readJSON(PROJECT_CONFIG) : null;
+}
+
+export function saveUserConfig(data, { mode } = {}) {
   const existing = readJSON(USER_CONFIG) || { profiles: {} };
   // 按字段合并同名 profile：保留手写的 username/password 等字段
   const merged = { ...existing.profiles };
   for (const [name, profile] of Object.entries(data.profiles || {})) {
     merged[name] = { ...merged[name], ...profile };
   }
-  // 保留其它顶层键（如 env 段）
-  writeJSON(USER_CONFIG, {
+  const next = {
     ...existing,
     default: data.default !== undefined ? data.default : existing.default,
     profiles: merged
-  });
+  };
+  // env 段按变量名合并；仅在显式传入时写回，未传时保持文件原样（含手写 env）
+  if (data.env !== undefined) {
+    const prevEnv = existing.env && typeof existing.env === 'object' ? existing.env : {};
+    next.env = { ...prevEnv, ...data.env };
+  }
+  writeJSON(USER_CONFIG, next, mode ? { encoding: 'utf8', mode } : 'utf8');
 }
 
 export function removeProfile(name) {

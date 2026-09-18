@@ -6,4 +6,4 @@
 
 - 前提：运行环境有 Node.js >= 21。
 - 可以用 skills CLI 安装：`npx skills add https://github.com/WhiteDG/apollo-cli --skill apollo`。
-- 首次使用需要先准备 profile 与凭据（Portal 账号密码）——见 `SKILL.md` 的「可用性检查」一节。
+- 首次使用让 AI 带跑一条 `setup` 命令即可完成配置与登录验证（见 `SKILL.md` 的「首次配置」一节）。

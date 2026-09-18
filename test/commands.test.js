@@ -52,7 +52,7 @@ after(() => iso.cleanup());
 
 test('profileList：空 profile 非 json 给出添加指引', async () => {
   const { stdout } = await withOutput(() => commands.profileList({}));
-  assert.equal(stdout, '未配置 profile。使用 "apollo-cli profile add <name> --base-url <url>" 添加\n');
+  assert.equal(stdout, '未配置 profile。运行 "apollo-cli setup <环境名>" 一步完成配置（或 "apollo-cli profile add <name> --base-url <url>"）\n');
 });
 
 test('profileList：空 profile json 输出空数组', async () => {

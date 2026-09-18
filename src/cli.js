@@ -7,6 +7,14 @@ const HELP = `apollo-cli — Apollo 配置中心命令行工具
 用法:
   apollo-cli <命令> [参数]
 
+初始化:
+  setup [name]                 一步完成 profile + 凭据配置并验证登录（缺项交互式询问）
+    --base-url <url>               portal 地址（非交互环境必传）
+    --username <u> --password <p>  Portal 账号密码（非交互环境必传）
+    --portal-env <env>             内部环境名，默认 profile 名大写
+    --cluster <name>               默认集群，默认 "default"
+    --default                      设为默认 profile（无任何 profile 时自动）
+
 登录/登出:
   login  [profile]             登录并保存 cookie
   logout [profile]             清除 profile 登录状态
@@ -50,6 +58,7 @@ profile 管理:
   -V, --version                 显示版本号
 
 示例:
+  apollo-cli setup fat --base-url http://portal.example.com:8070   # 交互输入账号密码，一步完成配置
   apollo-cli profile add fat --base-url http://portal.example.com:8070 --default
   apollo-cli login fat
   apollo-cli config ls MyApp -n application
@@ -138,7 +147,7 @@ async function main(raw) {
   if (cmd === undefined) {
     if (raw.length === 0) printHelp();
     parseCli({ args: prefix, ...parseCfg() }); // 前缀选项非法时优先报选项错误
-    die('缺少命令。可用命令: login, logout, profile, ns, config');
+    die('缺少命令。可用命令: login, logout, setup, profile, ns, config');
   }
   if (cmd === '--help' || cmd === '-h') printHelp();
   if (cmd === '--version' || cmd === '-V') {
@@ -156,10 +165,21 @@ async function main(raw) {
       const p = parseCli({ args, ...parseCfg() });
       return runCommands.logout(p.positionals[0] || null, p.values);
     }
+    case 'setup': {
+      const p = parseCli({ args, ...parseCfg({
+        'base-url': { type: 'string' },
+        'portal-env': { type: 'string' },
+        username: { type: 'string' },
+        password: { type: 'string' },
+        default: { type: 'boolean', default: false }
+      }) });
+      if (p.positionals.length > 1) die('参数过多。用法: apollo-cli setup [name] [--base-url <url>] [--username <u>] [--password <p>]');
+      return runCommands.profileSetup(p.positionals[0] || null, p.values);
+    }
     case 'profile': return handleProfile(args);
     case 'ns': return handleNs(args);
     case 'config': return handleConfig(args);
-    default: die(`未知命令: "${cmd}"\n可用命令: login, logout, profile, ns, config`);
+    default: die(`未知命令: "${cmd}"\n可用命令: login, logout, setup, profile, ns, config`);
   }
 }
 

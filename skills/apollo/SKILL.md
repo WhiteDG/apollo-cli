@@ -20,15 +20,28 @@ description: 用本技能自带的 apollo-cli 命令行工具查看、修改、�
 - 报 `node: command not found`，或 `node --version` 低于 21 时，告知用户"运行本技能需要 Node.js >= 21，请先安装/升级 Node"，不要绕行。
 - `node "<SK>/scripts/apollo-cli.cjs" profile list` 查看已配置的 profile、默认 profile、登录状态。用户说"fat 环境"就加 `-p fat`；没说时先确认默认 profile 是什么再动手。
 - **命令要在项目根目录执行**：profile 定义来自 `~/.apollo-cli/config.json`（用户级）与当前目录的 `./apollo-cli.config.json`（项目级）合并（同名 profile 项目级整体替换用户级，不是字段合并），凭据可从 shell 环境变量、当前目录的 `.env`、或这两个 config.json 的 `env` 段 / profile 的 `username`/`password` 字段读取（shell 环境变量 > `.env` > config.json）。所以跑命令时留在含这两个文件的项目根目录；如果 profile 突然报"未配置"或凭据找不到，先检查当前目录是不是不在项目根（也可能是项目配置整体覆盖掉了用户配置里手写的凭据），不要急着删掉 profile 重建。
-- 报"未找到凭据"时，提示用户配置 `APOLLO_<profile 名大写>_USERNAME/PASSWORD`（或全局 `APOLLO_USERNAME/PASSWORD`，写在 shell 环境、项目根目录 `.env` 或 config.json 里）后运行 `node "<SK>/scripts/apollo-cli.cjs" login <profile>`。不要替用户编造凭据，也不要去打印 `.env`、`~/.apollo-cli/session.json` 的内容。
-- `profile list` 为空、或用户所说的环境没有对应 profile 时：说明需要先添加 profile（`profile add`，见下文"命令速查"），Portal 地址与内部环境名向用户询问，不要猜测；拿到地址后可以代跑（`profile add` 只写本地配置）；凭据按上一条配置后登录。
+- `profile list` 为空、报"未找到凭据"、或用户所说的环境没有对应 profile 时：按下文「首次配置」处理；不要替用户编造凭据，也不要去打印 `.env`、`~/.apollo-cli/session.json` 的内容。
+
+### 首次配置（推荐由你代跑，用户只提供三样信息）
+
+`profile list` 为空、或报"未找到凭据"、或用户所说的环境没有对应 profile 时，**不要**把 profile/portal-env/cluster/环境变量这些概念抛给用户，先一次性问齐三样：环境名（用户平时怎么叫就填什么，如 fat/uat/prod）、Portal 地址（浏览器地址栏里就是）、账号密码。内部环境名默认等于环境名大写，不用问。拿到后直接代跑（一条命令完成用户级配置 + 登录验证）：
+
+```
+node "<SK>/scripts/apollo-cli.cjs" setup <环境名> --base-url <地址> --username <账号> --password <密码>
+```
+
+- setup 先验证登录、成功才写入 `~/.apollo-cli/config.json`（profile 与凭据），失败会报原因且不落任何配置，核对后重跑即可；重跑可更新地址或密码。
+- 密码会出现在你执行的命令里（本机私有会话），但不要在回复里复述密码，也不要把凭据写进任何项目文件（setup 只写用户级配置）。
+- 用户不想把密码交给你时，给他一行 `node "<SK>/scripts/apollo-cli.cjs" setup`，让他在自己的终端里交互式完成（密码不回显）。
+- 配置完成后直接继续用户原来的任务，不要让用户重说一遍。
 
 ## 命令速查
 
-下面 10 条常用命令的完整形式如下（`<SK>` 替换为解析出的绝对路径）：
+下面 11 条常用命令的完整形式如下（`<SK>` 替换为解析出的绝对路径）：
 
 ```
 node "<SK>/scripts/apollo-cli.cjs" login [profile]                  登录（通常不用手动跑，过期自动重登）
+node "<SK>/scripts/apollo-cli.cjs" setup <name> --base-url <url> --username <u> --password <p>  一步配置并验证登录（写用户级配置）
 node "<SK>/scripts/apollo-cli.cjs" profile list                     列出 profile
 node "<SK>/scripts/apollo-cli.cjs" profile add <name> --base-url <url> [--portal-env ENV] [--cluster CLUSTER] [--default]
 node "<SK>/scripts/apollo-cli.cjs" ns ls <appId>                    列出命名空间（含格式 properties/yml/json）

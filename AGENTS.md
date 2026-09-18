@@ -37,7 +37,7 @@ This file provides guidance to the AI agent when working with code in this repos
 ## 测试
 
 - 测试工具只用 Node 内置 `node:test` + `node:assert/strict`。测试放 `test/`，命名 `*.test.js`；`test/helpers.js` 是共享工具（顶层零副作用、不 import src）。
-- `test/filecontent.test.js`、`test/http.test.js` 为纯函数测试（无需 `setupIsolatedHome()`，http 只打桩 `globalThis.fetch`）；`test/skill-bundle.test.js` 不 import src，只 spawn 打包产物与 `scripts/build.js --check`，也不需要 `setupIsolatedHome()`，但必须给子进程传隔离的 HOME/USERPROFILE 并清空 `APOLLO_*`，绝不碰真实 `~/.apollo-cli`；其余文件按隔离纪律执行。
+- `test/filecontent.test.js`、`test/http.test.js`、`test/prompt.test.js` 为无需 `setupIsolatedHome()` 的测试（prompt 用注入流，http 只打桩 `globalThis.fetch`）；`test/skill-bundle.test.js` 不 import src，只 spawn 打包产物与 `scripts/build.js --check`，也不需要 `setupIsolatedHome()`，但必须给子进程传隔离的 HOME/USERPROFILE 并清空 `APOLLO_*`，绝不碰真实 `~/.apollo-cli`；其余文件按隔离纪律执行。
 - 隔离纪律（`src/store.js` 在模块加载期冻结 `~/.apollo-cli` 路径）：需要 store 的测试文件必须在**动态 `import()` src 之前**完成：`mkdtemp` → 设 `USERPROFILE`（Windows 上 `HOME` 无效，一并设置无害）→ `chdir` 临时目录 → 清空 `APOLLO_*`。用 `setupIsolatedHome()`，并用 `assertIsolated()` 兜底断言。
 - 测试绝不读取仓库真实 `.env` 与 `apollo-cli.config.json`，fetch 一律用 `t.mock.method(globalThis, 'fetch', ...)` 打桩，不访问网络。
 - 捕获 stdout/stderr 必须转发到原函数（测试 runner 用子进程 stdout 传协议，只记录不转发会整轮卡死）；禁止用 `t.mock` 打桩 stdio。
@@ -54,4 +54,4 @@ This file provides guidance to the AI agent when working with code in this repos
 - `src/store.js` 的原子写入带 Windows 杀软文件锁重试（EPERM/EACCES/EBUSY），改持久化逻辑时保留该行为。
 - `src/output.js` 的表格按 CJK 双宽字符计算列宽，新增输出列时沿用此逻辑。
 - 所有网络请求必须走 `src/http.js` 的 `fetchWithTimeout`（默认 30s 超时 + 统一连接错误文案），不要在业务代码里直接 `fetch`。
-- 写命令（login/logout/profile add|rm|default/config set|rm|publish）用 `src/commands.js` 的 `emit()` 保持双轨输出：`--json` 输出结构化结果（含 `needsPublish`/`releaseId` 等字段），否则输出中文文案；`config set/rm/publish` 保持 `--dry-run` 只读预演行为。新增写命令沿用此约定。
+- 写命令（login/logout/setup/profile add|rm|default/config set|rm|publish）用 `src/commands.js` 的 `emit()` 保持双轨输出：`--json` 输出结构化结果（含 `needsPublish`/`releaseId` 等字段），否则输出中文文案；`config set/rm/publish` 保持 `--dry-run` 只读预演行为。新增写命令沿用此约定。

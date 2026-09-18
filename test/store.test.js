@@ -145,7 +145,7 @@ test('resolveProfile：显式 profile 未配置时报错并列出可用 profile'
 test('resolveProfile：无 profile 时报错并给出添加指引', () => {
   assert.throws(
     () => store.resolveProfile(null),
-    err => err.message.includes('未配置任何 profile。请先执行 "apollo-cli profile add <name> --base-url <url>"')
+    err => err.message.includes('未配置任何 profile。请先运行 "apollo-cli setup <环境名>" 完成初始配置')
   );
   // 显式名称在空配置下同样报"未配置"，可用列表为空
   assert.throws(() => store.resolveProfile('fat'), /profile "fat" 未配置。可用: $/);
@@ -204,6 +204,25 @@ test('saveUserConfig：保留用户手写的 env 段', () => {
   });
   store.saveUserConfig({ profiles: { uat: { baseUrl: 'http://u' } } });
   assert.deepEqual(readJSON(userConfigFile).env, { APOLLO_PROFILE: 'dev' });
+});
+
+test('saveUserConfig：传入 env 时按变量名合并', () => {
+  writeJSONFile(userConfigFile, {
+    profiles: {},
+    env: { APOLLO_FAT_USERNAME: 'old', KEEP: '1' }
+  });
+  store.saveUserConfig({ profiles: {}, env: { APOLLO_FAT_USERNAME: 'new', APOLLO_FAT_PASSWORD: 'p' } });
+  assert.deepEqual(readJSON(userConfigFile).env, { APOLLO_FAT_USERNAME: 'new', KEEP: '1', APOLLO_FAT_PASSWORD: 'p' });
+});
+
+test('saveUserConfig：env 段被手写为非对象时按空对象兜底', () => {
+  writeJSONFile(userConfigFile, { profiles: {}, env: 'oops' });
+  store.saveUserConfig({ profiles: {}, env: { A: '1' } });
+  assert.deepEqual(readJSON(userConfigFile).env, { A: '1' });
+});
+
+test('userConfigPath：返回用户级配置文件绝对路径', () => {
+  assert.equal(store.userConfigPath(), userConfigFile);
 });
 
 test('saveUserConfig：同名 profile 按字段合并，保留手写凭据与额外顶层键', () => {

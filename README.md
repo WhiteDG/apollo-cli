@@ -50,11 +50,13 @@ npx skills add https://github.com/WhiteDG/apollo-cli --skill apollo
 - 「把 fat 环境 MyApp 的 timeout 改成 5000，改完发布」
 - 「看下 MyApp 的 app.yml 里 server.port 是多少」
 
-profile 与凭据跟 CLI 共用同一套配置（见「快速开始」的 1、2 步），首次使用前准备好即可。修改只写草稿、需要发布才生效；涉及生产类环境与删除操作时，skill 会先向你确认。
+profile 与凭据跟 CLI 共用同一套配置：首次使用时 skill 会带你用 `setup` 一步完成（或按「快速开始」手动准备）。修改只写草稿、需要发布才生效；涉及生产类环境与删除操作时，skill 会先向你确认。
 
 skill 内的完整使用说明见 `skills/apollo/SKILL.md`，行为测试用例见 `skills/apollo/evals/`。
 
 ## 快速开始
+
+**快捷方式**：下面的 1~3 步可用一条命令完成——`apollo-cli setup fat` 会交互式询问 Portal 地址与账号密码，先验证登录、成功后自动写入用户级配置（重跑可更新地址或密码）。
 
 ### 1. 添加 profile
 
@@ -73,6 +75,8 @@ apollo-cli profile add fat --base-url http://portal.example.com:8070 --default
 profile 定义里还支持可选的手写字段：`username`/`password`（凭据，见「配置凭据」方式五）。`profile add` 只覆盖 `baseUrl`/`portalEnv`/`cluster`，手写字段会保留。
 
 ### 2. 配置凭据
+
+最省事的方式是用 `apollo-cli setup` 一条命令写入（存的即下方「方式四」的 env 段）；以下是手动配置方式。
 
 创建 `.env` 文件或直接设置环境变量：
 
@@ -205,6 +209,7 @@ apollo-cli config set MyApp 'server.ports[0]' 8080 -n app.yml --string
 
 - 退出码：成功为 0，失败为 1；错误信息统一写 stderr，stdout 只放业务输出，`--json` 时 stdout 是合法 JSON。
 - 所有读写命令都支持 `--json`：读命令输出查询结果；写命令输出变更结果，如 `config set` 返回 `{action, key, namespace, value, needsPublish}`，`config publish` 返回 `releaseId`。
+- 首次配置可用 `apollo-cli setup` 非交互一条命令完成（传全 `--base-url/--username/--password`）：先验证登录、成功才写入用户级配置，失败不产生任何文件。
 - 写命令（`config set/rm/publish`）支持 `--dry-run` 预演：读取现状并输出将要执行的变更计划，不做任何写入。
 - 写操作只改草稿，需 `config publish` 才生效；`config set/rm` 的成功输出与 JSON 里的 `needsPublish` 都会提示这一点。
 - 非交互环境（stdin 不是终端）下 `config rm` 未带 `--yes` 会立即报错，不会挂起等待输入；不支持通过管道喂 `y` 确认（如 `echo y | apollo-cli config rm ...`），脚本请显式使用 `--yes`。
@@ -214,6 +219,7 @@ apollo-cli config set MyApp 'server.ports[0]' 8080 -n app.yml --string
 
 ```
 apollo-cli --version
+apollo-cli setup [name] [--base-url <url>] [--username u] [--password p] [--portal-env ENV] [--cluster CLUSTER] [--default]
 apollo-cli login [profile] [--username u] [--password p]
 apollo-cli logout [profile]
 apollo-cli profile list

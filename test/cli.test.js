@@ -79,7 +79,7 @@ test('cli：--version/-V 输出版本号且不置 exitCode', async () => {
 test('cli：未知命令报错并置 exitCode=1', async () => {
   const res = await runCli(['foo']);
   assert.equal(res.stdout, '');
-  assert.equal(res.stderr, '未知命令: "foo"\n可用命令: login, logout, profile, ns, config\n');
+  assert.equal(res.stderr, '未知命令: "foo"\n可用命令: login, logout, setup, profile, ns, config\n');
   assert.equal(res.exitCode, 1);
 });
 
@@ -248,7 +248,7 @@ test('cli：前置全局选项与 -- 混用不被吞（回归：-p/--json 静默
 
 test('cli：仅全局选项或裸选项时报缺少命令/未知选项', async () => {
   const bare = await runCli(['--json']);
-  assert.equal(bare.stderr, '缺少命令。可用命令: login, logout, profile, ns, config\n');
+  assert.equal(bare.stderr, '缺少命令。可用命令: login, logout, setup, profile, ns, config\n');
   assert.equal(bare.exitCode, 1);
 
   const bogus = await runCli(['--bogus']);
@@ -422,6 +422,42 @@ test('cli：profile rm/profile default 缺参校验与路由', async () => {
   const rmOk = await runCli(['profile', 'rm', 'dev']);
   assert.equal(rmOk.stdout, 'profile "dev" 已删除（从用户配置中移除）\n');
   assert.equal(rmOk.exitCode, undefined);
+});
+
+test('cli：帮助含 setup 初始化段', async () => {
+  const res = await runCli(['--help']);
+  assert.match(res.stdout, /初始化:/);
+  assert.match(res.stdout, /setup \[name\]/);
+});
+
+test('cli：setup 非交互缺参报错且不挂起', async () => {
+  const restore = setStdinTty(false);
+  try {
+    const res = await runCli(['setup', 'fat']);
+    assert.match(res.stderr, /非交互环境缺少必要信息：--base-url、--username、--password/);
+    assert.equal(res.exitCode, 1);
+  } finally {
+    restore();
+  }
+});
+
+test('cli：setup 全参数端到端落盘并输出 --json', async t => {
+  fetchStub(t, (record, idx) => (idx === 0 ? redirectResponse('/apps', ['JSESSIONID=cli']) : jsonResponse([])));
+  const res = await runCli(['setup', 'fat', '--base-url', portal, '--username', 'u', '--password', 'p', '--json']);
+  assert.equal(res.exitCode, undefined);
+  const out = JSON.parse(res.stdout);
+  assert.equal(out.profile, 'fat');
+  assert.equal(out.default, true);
+  assert.equal('password' in out, false);
+  const cfg = readJSON(join(iso.home, '.apollo-cli', 'config.json'));
+  assert.equal(cfg.profiles.fat.baseUrl, portal);
+  assert.equal(cfg.env.APOLLO_FAT_USERNAME, 'u');
+});
+
+test('cli：setup 位置参数过多时报错', async () => {
+  const res = await runCli(['setup', 'a', 'b']);
+  assert.equal(res.stderr, '参数过多。用法: apollo-cli setup [name] [--base-url <url>] [--username <u>] [--password <p>]\n');
+  assert.equal(res.exitCode, 1);
 });
 
 test('cli：错误用例跑完后 process.exitCode 无残留', () => {

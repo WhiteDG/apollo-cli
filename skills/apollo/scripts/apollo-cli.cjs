@@ -7463,9 +7463,9 @@ function cleanStaleTmp(path) {
 function sleep(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
-function writeJSON(path, data) {
+function writeJSON(path, data, options = "utf8") {
   ensureDir(USER_DIR);
-  atomicWrite(path, JSON.stringify(data, null, 2) + "\n", "utf8");
+  atomicWrite(path, JSON.stringify(data, null, 2) + "\n", options);
 }
 function loadConfig() {
   const user = readJSON(USER_CONFIG);
@@ -7495,7 +7495,7 @@ function resolveProfile(profileName) {
     if (!profiles[profileName]) return dieMsg(`profile "${profileName}" \u672A\u914D\u7F6E\u3002\u53EF\u7528: ${keys.join(", ")}`);
     return { config: profiles[profileName], configFile: config, profileName };
   }
-  if (keys.length === 0) return dieMsg('\u672A\u914D\u7F6E\u4EFB\u4F55 profile\u3002\u8BF7\u5148\u6267\u884C "apollo-cli profile add <name> --base-url <url>"');
+  if (keys.length === 0) return dieMsg('\u672A\u914D\u7F6E\u4EFB\u4F55 profile\u3002\u8BF7\u5148\u8FD0\u884C "apollo-cli setup <\u73AF\u5883\u540D>" \u5B8C\u6210\u521D\u59CB\u914D\u7F6E\uFF08\u6216 "apollo-cli profile add <name> --base-url <url>"\uFF09');
   const picked = config.default || keys[0];
   if (!profiles[picked]) return dieMsg(`\u9ED8\u8BA4 profile "${picked}" \u4E0D\u5B58\u5728`);
   return { config: profiles[picked], configFile: config, profileName: picked };
@@ -7504,17 +7504,28 @@ function getAllProfiles() {
   const config = loadConfig();
   return { profiles: config.profiles, default: config.default };
 }
-function saveUserConfig(data) {
+function userConfigPath() {
+  return USER_CONFIG;
+}
+function loadProjectConfig() {
+  return (0, import_node_fs2.existsSync)(PROJECT_CONFIG) ? readJSON(PROJECT_CONFIG) : null;
+}
+function saveUserConfig(data, { mode } = {}) {
   const existing = readJSON(USER_CONFIG) || { profiles: {} };
   const merged = { ...existing.profiles };
   for (const [name, profile] of Object.entries(data.profiles || {})) {
     merged[name] = { ...merged[name], ...profile };
   }
-  writeJSON(USER_CONFIG, {
+  const next = {
     ...existing,
     default: data.default !== void 0 ? data.default : existing.default,
     profiles: merged
-  });
+  };
+  if (data.env !== void 0) {
+    const prevEnv = existing.env && typeof existing.env === "object" ? existing.env : {};
+    next.env = { ...prevEnv, ...data.env };
+  }
+  writeJSON(USER_CONFIG, next, mode ? { encoding: "utf8", mode } : "utf8");
 }
 function removeProfile(name) {
   const scopes = [];
@@ -8219,8 +8230,98 @@ function output(data, opts = {}) {
   }
 }
 
-// src/commands.js
+// src/prompt.js
 var import_node_readline = require("node:readline");
+var import_node_string_decoder = require("node:string_decoder");
+function createPrompter({ input = process.stdin, output: output2 = process.stderr, terminal } = {}) {
+  const streamsAreTty = !!(input.isTTY && output2.isTTY);
+  const useTerminal = terminal ?? streamsAreTty;
+  return {
+    interactive: streamsAreTty && !process.env.CI && !process.env.APOLLO_NO_PROMPT,
+    ask: (question) => ask(question, { input, output: output2, terminal: useTerminal }),
+    askHidden: (question) => askHidden(question, { input, output: output2 })
+  };
+}
+function ask(question, { input, output: output2, terminal }) {
+  return new Promise((resolve2) => {
+    const rl = (0, import_node_readline.createInterface)({ input, output: output2, terminal });
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      if (!rl.closed) rl.close();
+      resolve2(value);
+    };
+    rl.once("SIGINT", () => {
+      output2.write("\n");
+      finish(null);
+    });
+    rl.once("close", () => finish(null));
+    rl.question(question, (line) => finish(line));
+  });
+}
+function askHidden(question, { input, output: output2 }) {
+  if (typeof input.setRawMode !== "function") {
+    return ask(question, { input, output: output2, terminal: false });
+  }
+  return new Promise((resolve2) => {
+    let settled = false;
+    let esc = "";
+    const chars = [];
+    const decoder = new import_node_string_decoder.StringDecoder("utf8");
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      input.removeListener("data", onData);
+      input.removeListener("end", onEnd);
+      input.setRawMode(false);
+      input.pause();
+      resolve2(value);
+    };
+    const onEnd = () => finish(null);
+    const onData = (chunk) => {
+      for (const ch of decoder.write(chunk)) {
+        if (esc !== "") {
+          esc += ch;
+          if (/[A-Za-z~]/.test(ch) || esc.length >= 8) esc = "";
+          continue;
+        }
+        if (ch === "\x1B") {
+          esc = ch;
+          continue;
+        }
+        if (ch === "\r" || ch === "\n") {
+          output2.write("\n");
+          finish(chars.join(""));
+          return;
+        }
+        if (ch === "") {
+          output2.write("\n");
+          finish(null);
+          return;
+        }
+        if (ch === "\x7F" || ch === "\b") {
+          if (chars.length > 0) {
+            chars.pop();
+            output2.write("\b \b");
+          }
+          continue;
+        }
+        if (ch < " ") continue;
+        chars.push(ch);
+        output2.write("*");
+      }
+    };
+    output2.write(question);
+    input.setRawMode(true);
+    input.resume();
+    input.on("data", onData);
+    input.once("end", onEnd);
+  });
+}
+
+// src/commands.js
+var import_node_readline2 = require("node:readline");
 function die(msg) {
   throw new Error(msg);
 }
@@ -8277,7 +8378,7 @@ function profileList(opts = {}) {
       output([], opts);
       return;
     }
-    process.stdout.write('\u672A\u914D\u7F6E profile\u3002\u4F7F\u7528 "apollo-cli profile add <name> --base-url <url>" \u6DFB\u52A0\n');
+    process.stdout.write('\u672A\u914D\u7F6E profile\u3002\u8FD0\u884C "apollo-cli setup <\u73AF\u5883\u540D>" \u4E00\u6B65\u5B8C\u6210\u914D\u7F6E\uFF08\u6216 "apollo-cli profile add <name> --base-url <url>"\uFF09\n');
     return;
   }
   const rows = [];
@@ -8315,6 +8416,81 @@ function profileAdd(name, vals) {
     cluster: data.cluster,
     default: !!vals.default,
     ...def ? { defaultScope: def.scope, defaultPath: def.path } : {}
+  }, text);
+}
+async function askField(prompt, question, { hidden = false } = {}) {
+  for (; ; ) {
+    const answer = await (hidden ? prompt.askHidden(question) : prompt.ask(question));
+    if (answer === null) die("\u5DF2\u53D6\u6D88\uFF08\u672A\u5B8C\u6210\u914D\u7F6E\uFF09");
+    const value = hidden ? answer : answer.trim();
+    if (value !== "") return value;
+    process.stderr.write("\u8F93\u5165\u4E0D\u80FD\u4E3A\u7A7A\uFF0C\u8BF7\u91CD\u65B0\u8F93\u5165\n");
+  }
+}
+function warnSetupPitfalls(name, prefix) {
+  const project = loadProjectConfig();
+  if (project?.profiles?.[name]) {
+    process.stderr.write(`\u63D0\u793A\uFF1A\u9879\u76EE\u914D\u7F6E\u4E2D\u5B58\u5728\u540C\u540D profile "${name}"\uFF0C\u9879\u76EE\u7EA7\u4F1A\u4F18\u5148\u751F\u6548\uFF08\u672C\u6B21\u5199\u5165\u7684\u662F\u7528\u6237\u7EA7\uFF09
+`);
+  }
+  if (process.env[`${prefix}USERNAME`] || process.env[`${prefix}PASSWORD`]) {
+    process.stderr.write(`\u63D0\u793A\uFF1Ashell \u73AF\u5883\u53D8\u91CF ${prefix}USERNAME/PASSWORD \u5DF2\u8BBE\u7F6E\uFF0C\u4F18\u5148\u4E8E\u672C\u6B21\u5199\u5165\u7684\u914D\u7F6E\u751F\u6548
+`);
+  }
+  const others = Object.keys(getAllProfiles().profiles).filter((n) => n !== name);
+  if (others.some((n) => profileVarPrefix(n) === prefix)) {
+    process.stderr.write(`\u63D0\u793A\uFF1Aprofile \u540D "${name}" \u4E0E\u5DF2\u6709 profile \u5F52\u4E00\u540E\u5171\u7528\u540C\u4E00\u7EC4\u73AF\u5883\u53D8\u91CF\uFF08${prefix}*\uFF09\uFF0C\u51ED\u636E\u4F1A\u76F8\u4E92\u8986\u76D6
+`);
+  }
+}
+async function profileSetup(nameArg, vals, prompt = createPrompter()) {
+  const name = (nameArg || vals.profile || "").trim() || null;
+  const missing = [];
+  if (!name) missing.push("profile \u540D\uFF08\u4F4D\u7F6E\u53C2\u6570\uFF09");
+  if (!vals["base-url"]) missing.push("--base-url");
+  if (!vals.username) missing.push("--username");
+  if (!vals.password) missing.push("--password");
+  if (missing.length > 0 && !prompt.interactive) {
+    die(`\u975E\u4EA4\u4E92\u73AF\u5883\u7F3A\u5C11\u5FC5\u8981\u4FE1\u606F\uFF1A${missing.join("\u3001")}\u3002\u8BF7\u8865\u9F50\u540E\u91CD\u8BD5\uFF0C\u6216\u5728\u7EC8\u7AEF\u76F4\u63A5\u8FD0\u884C setup \u4EA4\u4E92\u5F0F\u586B\u5199`);
+  }
+  if (missing.length > 0) {
+    process.stderr.write("\u8FDB\u5165\u4EA4\u4E92\u5F0F\u914D\u7F6E\uFF08Ctrl+C \u53D6\u6D88\uFF09\n");
+  }
+  const finalName = name || await askField(prompt, "profile \u540D\uFF08\u73AF\u5883\u540D\uFF0C\u5982 fat/uat/prod\uFF09: ");
+  const baseUrl = (vals["base-url"] || await askField(prompt, "Portal \u5730\u5740\uFF08\u5982 http://portal.example.com:8070\uFF09: ")).trim().replace(/\/+$/, "");
+  const username = (vals.username || await askField(prompt, "Portal \u8D26\u53F7: ")).trim();
+  const password = vals.password || await askField(prompt, "Portal \u5BC6\u7801\uFF08\u9690\u85CF\u8F93\u5165\uFF0C\u8F93\u5B8C\u56DE\u8F66\uFF09: ", { hidden: true });
+  const { profiles } = getAllProfiles();
+  const existing = profiles[finalName];
+  const portalEnv = vals["portal-env"] || existing?.portalEnv || finalName.toUpperCase();
+  const cluster = vals.cluster || existing?.cluster || "default";
+  let cookie;
+  try {
+    cookie = await login({ username, password }, baseUrl);
+  } catch (e) {
+    die(`${e instanceof Error ? e.message : String(e)}\uFF08\u672A\u4FDD\u5B58\u4EFB\u4F55\u914D\u7F6E\uFF0C\u8BF7\u4FEE\u6B63\u540E\u91CD\u8BD5\uFF09`);
+  }
+  const prefix = profileVarPrefix(finalName);
+  saveUserConfig({
+    profiles: { [finalName]: { baseUrl, portalEnv, cluster } },
+    env: { [`${prefix}USERNAME`]: username, [`${prefix}PASSWORD`]: password }
+  }, { mode: 384 });
+  saveSession(finalName, { baseUrl, cookie, username, savedAt: Date.now() });
+  let def = null;
+  if (vals.default || Object.keys(profiles).length === 0) def = setDefaultProfile(finalName);
+  warnSetupPitfalls(finalName, prefix);
+  const text = `profile "${finalName}" \u5DF2\u914D\u7F6E\u5E76\u767B\u5F55\u6210\u529F (portal: ${portalEnv}, cluster: ${cluster}) [${username}]
+\u51ED\u636E\u5DF2\u4FDD\u5B58\u5230\u7528\u6237\u7EA7\u914D\u7F6E: ${userConfigPath()}` + (def ? `
+\u9ED8\u8BA4 profile \u5DF2\u8BBE\u4E3A "${finalName}"\uFF08\u5DF2\u5199\u5165${def.scope}: ${def.path}\uFF09` : "");
+  emit(vals, {
+    profile: finalName,
+    baseUrl,
+    portalEnv,
+    cluster,
+    default: !!def,
+    ...def ? { defaultScope: def.scope, defaultPath: def.path } : {},
+    configPath: userConfigPath(),
+    username
   }, text);
 }
 function profileRm(name, opts = {}) {
@@ -8618,7 +8794,7 @@ async function configReleases(appId, opts) {
   }
 }
 function promptConfirm(question) {
-  const rl = (0, import_node_readline.createInterface)({ input: process.stdin, output: process.stderr });
+  const rl = (0, import_node_readline2.createInterface)({ input: process.stdin, output: process.stderr });
   return new Promise((resolve2) => {
     let answered = false;
     process.stderr.write(question);
@@ -8677,6 +8853,14 @@ var HELP = `apollo-cli \u2014 Apollo \u914D\u7F6E\u4E2D\u5FC3\u547D\u4EE4\u884C\
 \u7528\u6CD5:
   apollo-cli <\u547D\u4EE4> [\u53C2\u6570]
 
+\u521D\u59CB\u5316:
+  setup [name]                 \u4E00\u6B65\u5B8C\u6210 profile + \u51ED\u636E\u914D\u7F6E\u5E76\u9A8C\u8BC1\u767B\u5F55\uFF08\u7F3A\u9879\u4EA4\u4E92\u5F0F\u8BE2\u95EE\uFF09
+    --base-url <url>               portal \u5730\u5740\uFF08\u975E\u4EA4\u4E92\u73AF\u5883\u5FC5\u4F20\uFF09
+    --username <u> --password <p>  Portal \u8D26\u53F7\u5BC6\u7801\uFF08\u975E\u4EA4\u4E92\u73AF\u5883\u5FC5\u4F20\uFF09
+    --portal-env <env>             \u5185\u90E8\u73AF\u5883\u540D\uFF0C\u9ED8\u8BA4 profile \u540D\u5927\u5199
+    --cluster <name>               \u9ED8\u8BA4\u96C6\u7FA4\uFF0C\u9ED8\u8BA4 "default"
+    --default                      \u8BBE\u4E3A\u9ED8\u8BA4 profile\uFF08\u65E0\u4EFB\u4F55 profile \u65F6\u81EA\u52A8\uFF09
+
 \u767B\u5F55/\u767B\u51FA:
   login  [profile]             \u767B\u5F55\u5E76\u4FDD\u5B58 cookie
   logout [profile]             \u6E05\u9664 profile \u767B\u5F55\u72B6\u6001
@@ -8720,6 +8904,7 @@ profile \u7BA1\u7406:
   -V, --version                 \u663E\u793A\u7248\u672C\u53F7
 
 \u793A\u4F8B:
+  apollo-cli setup fat --base-url http://portal.example.com:8070   # \u4EA4\u4E92\u8F93\u5165\u8D26\u53F7\u5BC6\u7801\uFF0C\u4E00\u6B65\u5B8C\u6210\u914D\u7F6E
   apollo-cli profile add fat --base-url http://portal.example.com:8070 --default
   apollo-cli login fat
   apollo-cli config ls MyApp -n application
@@ -8797,7 +8982,7 @@ async function main(raw) {
   if (cmd === void 0) {
     if (raw.length === 0) printHelp();
     parseCli({ args: prefix, ...parseCfg() });
-    die2("\u7F3A\u5C11\u547D\u4EE4\u3002\u53EF\u7528\u547D\u4EE4: login, logout, profile, ns, config");
+    die2("\u7F3A\u5C11\u547D\u4EE4\u3002\u53EF\u7528\u547D\u4EE4: login, logout, setup, profile, ns, config");
   }
   if (cmd === "--help" || cmd === "-h") printHelp();
   if (cmd === "--version" || cmd === "-V") {
@@ -8815,6 +9000,17 @@ async function main(raw) {
       const p = parseCli({ args, ...parseCfg() });
       return logout(p.positionals[0] || null, p.values);
     }
+    case "setup": {
+      const p = parseCli({ args, ...parseCfg({
+        "base-url": { type: "string" },
+        "portal-env": { type: "string" },
+        username: { type: "string" },
+        password: { type: "string" },
+        default: { type: "boolean", default: false }
+      }) });
+      if (p.positionals.length > 1) die2("\u53C2\u6570\u8FC7\u591A\u3002\u7528\u6CD5: apollo-cli setup [name] [--base-url <url>] [--username <u>] [--password <p>]");
+      return profileSetup(p.positionals[0] || null, p.values);
+    }
     case "profile":
       return handleProfile(args);
     case "ns":
@@ -8823,7 +9019,7 @@ async function main(raw) {
       return handleConfig(args);
     default:
       die2(`\u672A\u77E5\u547D\u4EE4: "${cmd}"
-\u53EF\u7528\u547D\u4EE4: login, logout, profile, ns, config`);
+\u53EF\u7528\u547D\u4EE4: login, logout, setup, profile, ns, config`);
   }
 }
 function printHelp() {

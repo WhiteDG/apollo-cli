@@ -1,12 +1,14 @@
 import { loadDotEnv } from './dotenv.js';
 import {
   resolveProfile, getAllProfiles, saveUserConfig, removeProfile,
-  loadSession, saveSession, clearSession, setDefaultProfile, getEnvVar
+  loadSession, saveSession, clearSession, setDefaultProfile, getEnvVar,
+  userConfigPath, loadProjectConfig
 } from './store.js';
 import { login as authLogin, resolveCredentials, ensureSession, profileVarPrefix } from './auth.js';
 import * as api from './api.js';
 import * as filecontent from './filecontent.js';
 import { output } from './output.js';
+import { createPrompter } from './prompt.js';
 import { createInterface } from 'node:readline';
 
 function die(msg) {
@@ -80,7 +82,7 @@ export function profileList(opts = {}) {
   const keys = Object.keys(profiles);
   if (keys.length === 0) {
     if (opts.json) { output([], opts); return; }
-    process.stdout.write('未配置 profile。使用 "apollo-cli profile add <name> --base-url <url>" 添加\n');
+    process.stdout.write('未配置 profile。运行 "apollo-cli setup <环境名>" 一步完成配置（或 "apollo-cli profile add <name> --base-url <url>"）\n');
     return;
   }
   const rows = [];
@@ -119,6 +121,96 @@ export function profileAdd(name, vals) {
     cluster: data.cluster,
     default: !!vals.default,
     ...(def ? { defaultScope: def.scope, defaultPath: def.path } : {})
+  }, text);
+}
+
+// ---- setup ----
+
+async function askField(prompt, question, { hidden = false } = {}) {
+  for (;;) {
+    const answer = await (hidden ? prompt.askHidden(question) : prompt.ask(question));
+    if (answer === null) die('已取消（未完成配置）');
+    const value = hidden ? answer : answer.trim();
+    if (value !== '') return value;
+    process.stderr.write('输入不能为空，请重新输入\n');
+  }
+}
+
+// 提示会让刚写入的值不生效的情形：项目级同名 profile 优先、shell 变量遮蔽、归一前缀冲突
+function warnSetupPitfalls(name, prefix) {
+  const project = loadProjectConfig();
+  if (project?.profiles?.[name]) {
+    process.stderr.write(`提示：项目配置中存在同名 profile "${name}"，项目级会优先生效（本次写入的是用户级）\n`);
+  }
+  if (process.env[`${prefix}USERNAME`] || process.env[`${prefix}PASSWORD`]) {
+    process.stderr.write(`提示：shell 环境变量 ${prefix}USERNAME/PASSWORD 已设置，优先于本次写入的配置生效\n`);
+  }
+  const others = Object.keys(getAllProfiles().profiles).filter(n => n !== name);
+  if (others.some(n => profileVarPrefix(n) === prefix)) {
+    process.stderr.write(`提示：profile 名 "${name}" 与已有 profile 归一后共用同一组环境变量（${prefix}*），凭据会相互覆盖\n`);
+  }
+}
+
+/**
+ * 一步完成 profile + 凭据配置并验证登录（aws configure 式）。
+ * 与 profileAdd 的差异：未传 --portal-env/--cluster 时保留已有 profile 的原值；先验证登录成功才落盘。
+ */
+export async function profileSetup(nameArg, vals, prompt = createPrompter()) {
+  const name = (nameArg || vals.profile || '').trim() || null;
+  const missing = [];
+  if (!name) missing.push('profile 名（位置参数）');
+  if (!vals['base-url']) missing.push('--base-url');
+  if (!vals.username) missing.push('--username');
+  if (!vals.password) missing.push('--password');
+  if (missing.length > 0 && !prompt.interactive) {
+    die(`非交互环境缺少必要信息：${missing.join('、')}。请补齐后重试，或在终端直接运行 setup 交互式填写`);
+  }
+  if (missing.length > 0) {
+    process.stderr.write('进入交互式配置（Ctrl+C 取消）\n');
+  }
+
+  const finalName = name || await askField(prompt, 'profile 名（环境名，如 fat/uat/prod）: ');
+  const baseUrl = (vals['base-url'] || await askField(prompt, 'Portal 地址（如 http://portal.example.com:8070）: ')).trim().replace(/\/+$/, '');
+  const username = (vals.username || await askField(prompt, 'Portal 账号: ')).trim();
+  const password = vals.password || await askField(prompt, 'Portal 密码（隐藏输入，输完回车）: ', { hidden: true });
+
+  const { profiles } = getAllProfiles(); // 预检配置可解析，并据此判断是否首次配置
+  const existing = profiles[finalName];
+  const portalEnv = vals['portal-env'] || existing?.portalEnv || finalName.toUpperCase();
+  const cluster = vals.cluster || existing?.cluster || 'default';
+
+  // 先验证登录，成功后才统一落盘：失败时不产生任何半配置
+  let cookie;
+  try {
+    cookie = await authLogin({ username, password }, baseUrl);
+  } catch (e) {
+    die(`${e instanceof Error ? e.message : String(e)}（未保存任何配置，请修正后重试）`);
+  }
+
+  const prefix = profileVarPrefix(finalName);
+  saveUserConfig({
+    profiles: { [finalName]: { baseUrl, portalEnv, cluster } },
+    env: { [`${prefix}USERNAME`]: username, [`${prefix}PASSWORD`]: password }
+  }, { mode: 0o600 });
+  saveSession(finalName, { baseUrl, cookie, username, savedAt: Date.now() });
+
+  let def = null;
+  if (vals.default || Object.keys(profiles).length === 0) def = setDefaultProfile(finalName);
+
+  warnSetupPitfalls(finalName, prefix);
+
+  const text = `profile "${finalName}" 已配置并登录成功 (portal: ${portalEnv}, cluster: ${cluster}) [${username}]` +
+    `\n凭据已保存到用户级配置: ${userConfigPath()}` +
+    (def ? `\n默认 profile 已设为 "${finalName}"（已写入${def.scope}: ${def.path}）` : '');
+  emit(vals, {
+    profile: finalName,
+    baseUrl,
+    portalEnv,
+    cluster,
+    default: !!def,
+    ...(def ? { defaultScope: def.scope, defaultPath: def.path } : {}),
+    configPath: userConfigPath(),
+    username
   }, text);
 }
 

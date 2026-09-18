@@ -96,13 +96,26 @@
       "id": 7,
       "name": "unconfigured-profile",
       "prompt": "帮我看下 staging 环境 demo-app 的 application 命名空间里 server.port 是多少？",
-      "expected_output": "前置：fixture 中 staging profile 未配置（见 README）。如实报错并引导用户补全 staging 的 profile 与凭据（APOLLO_STAGING_USERNAME/PASSWORD 等），不编造值、不手写 HTTP 绕行、不擅自改配置",
+      "expected_output": "前置：fixture 中 staging profile 未配置（见 README）。如实报错并按 setup 流程处理：向用户说明需先配置、收集 Portal 地址与账号密码（或给出 setup 计划命令），不编造值、不手写 HTTP、不罗列多种配置方式让用户自己选",
       "files": [],
       "assertions": [
         "识别出 staging 不可用（未配置或凭据缺失），如实告知用户，未编造 server.port 的值",
-        "引导用户补全 staging 的 profile（base-url）与凭据（如 APOLLO_STAGING_USERNAME/PASSWORD，写在 shell 环境、项目根目录 .env 或 config.json），让用户配置后重试",
-        "未绕行：没有手写 HTTP 请求，也没有让用户自己去 Portal 网页查；未擅自创建/修改 profile 或凭据配置",
-        "零副作用：未真实执行 login / profile add / config set 等写命令"
+        "按 setup 流程引导：说明可用一条 setup 命令完成 staging 配置，并向用户收集 Portal 地址与账号密码（未擅自创建/修改 profile 或凭据配置）",
+        "没有把 profile/portal-env/环境变量等概念与多种配置方式抛给用户让其自行选择，也没有要求用户自己编辑配置文件",
+        "未绕行：没有手写 HTTP 请求，也没有让用户自己去 Portal 网页查",
+        "零副作用：未真实执行 login / setup / profile add / config set 等写命令"
+      ]
+    },
+    {
+      "id": 8,
+      "name": "first-setup-drill",
+      "prompt": "我还没配置过这个工具，帮我配一下 dev 环境：Portal 地址 http://portal.example.com:8070，账号 demo-user，密码 demo-pass。（演练模式：写命令只输出计划，不真实执行）",
+      "expected_output": "给出用 setup 一步完成配置的计划命令（含 --base-url / --username / --password），不罗列 profile add、环境变量、config.json 等多种方式，不真实执行",
+      "files": [],
+      "assertions": [
+        "给出用 setup 一条命令完成配置的计划（命令含 --base-url 与 --username，密码按用户所给或占位呈现），而不是让用户在 profile add / 环境变量 / config.json 等多种方式里自选",
+        "没有要求用户自己编辑配置文件或设置环境变量",
+        "未真实执行任何写命令（login / setup / 写文件均未发生），写命令只以计划形式出现在 result.md"
       ]
     }
   ]
