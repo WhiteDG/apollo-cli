@@ -29,6 +29,31 @@ pnpm link --global  # 链接后可直接使用 apollo-cli
 node bin/apollo-cli.js --help
 ```
 
+## 作为 AI Skill 使用
+
+本仓库自带一个 AI skill（`skills/apollo/`）：在支持 skills 的 AI 编程工具（如 Qoder、Claude Code）中安装后，可以用自然语言直接读写 Apollo 配置。skill 自带打包好的单文件 CLI 产物（`skills/apollo/scripts/apollo-cli.cjs`），**无需安装 apollo-cli**，机器上有 Node.js >= 21 即可。
+
+### 安装 skill
+
+```bash
+# 用 skills CLI 安装（详见 npx skills --help）
+npx skills add https://github.com/WhiteDG/apollo-cli --skill apollo
+```
+
+也可以手动安装：把 `skills/apollo/` 目录整个拷贝到所用工具的 skills 目录（如 `~/.qoder/skills/apollo/`）。
+
+### 使用
+
+安装后直接用自然语言提出需求，skill 会自动触发，例如：
+
+- 「看下 fat 环境 MyApp 的 timeout 是多少」
+- 「把 fat 环境 MyApp 的 timeout 改成 5000，改完发布」
+- 「看下 MyApp 的 app.yml 里 server.port 是多少」
+
+profile 与凭据跟 CLI 共用同一套配置（见「快速开始」的 1、2 步），首次使用前准备好即可。修改只写草稿、需要发布才生效；涉及生产类环境与删除操作时，skill 会先向你确认。
+
+skill 内的完整使用说明见 `skills/apollo/SKILL.md`，行为测试用例见 `skills/apollo/evals/`。
+
 ## 快速开始
 
 ### 1. 添加 profile
