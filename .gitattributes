@@ -1,3 +1,3 @@
-# skill 自带的打包产物固定按 LF 存储：Windows（core.autocrlf=true）检出会转成 CRLF，
-# 导致产物与 esbuild 输出不一致、产物过期校验误报
+# skill 自带的打包产物固定按 LF 存储：Windows（core.autocrlf=true）检出会转成 CRLF，与其它平台不一致
+# （build:check 另有 CRLF 归一兜底、不会误报过期；这里保证仓库内与该文件在各平台的检出内容一致）
 skills/apollo/scripts/apollo-cli.cjs text eol=lf

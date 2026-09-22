@@ -195,7 +195,7 @@ apollo-cli config set MyApp 'server.ports[0]' 8080 -n app.yml --string
 
 ## 全局选项
 
-全局选项可放在子命令前或子命令后（如 `apollo-cli --json config get MyApp timeout -p fat`）。
+全局选项可放在子命令前或子命令后（如 `apollo-cli --json config get MyApp timeout -p fat`）；写在子命令前时其后须紧跟子命令。`-h/--help` 与 `-V/--version` 在 `--` 之前的任意位置都生效（`apollo-cli -V`、`apollo-cli config -V`、`apollo-cli config set -V`、`apollo-cli --json config -h` 均可用）。
 
 | 选项 | 简写 | 说明 |
 |---|---|---|
@@ -203,6 +203,7 @@ apollo-cli config set MyApp 'server.ports[0]' 8080 -n app.yml --string
 | `--cluster <name>` | | 集群名，默认读取 profile 配置的 cluster |
 | `--namespace <name>` | `-n` | 命名空间，默认 "application" |
 | `--json` | | JSON 格式输出（读写命令均支持） |
+| `--help` | `-h` | 显示帮助 |
 | `--version` | `-V` | 显示版本号 |
 
 ## 自动化 / AI Agent 使用

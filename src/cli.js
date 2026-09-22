@@ -1,6 +1,6 @@
 import { parseArgs } from 'node:util';
 import * as runCommands from './commands.js';
-import pkg from '../package.json' with { type: 'json' };
+import { VERSION } from './version.js';
 
 const HELP = `apollo-cli — Apollo 配置中心命令行工具
 
@@ -55,7 +55,12 @@ profile 管理:
   --cluster <name>              集群，默认读取 profile 配置（未配置则 "default"）
   -n, --namespace <name>        命名空间，默认 "application"
   --json                        输出 JSON 格式（读写命令均支持）
+  -h, --help                    显示帮助
   -V, --version                 显示版本号
+
+-h/--help 与 -V/--version 在 "--" 之前的任意位置都生效，可放在命令链任一层级：
+  apollo-cli -V、apollo-cli --json -V、apollo-cli config -V、apollo-cli config set -V 均可用；
+  其余选项写在子命令前时，其后须紧跟子命令（如 apollo-cli --json config ls MyApp）。
 
 示例:
   apollo-cli setup fat --base-url http://portal.example.com:8070   # 交互输入账号密码，一步完成配置
@@ -67,6 +72,31 @@ profile 管理:
   apollo-cli config set MyApp 'server.ports[0]' 8080 -n app.yml   # 文件型命名空间按字段路径（含 [] 的路径建议加引号，避免 shell glob）
   apollo-cli config publish MyApp --title "v1.0.1" --emergency
 `;
+
+const SETUP_USAGE = 'apollo-cli setup [name] [--base-url <url>] [--username <u>] [--password <p>]';
+
+const USAGE = {
+  login: '用法: apollo-cli login [profile] [--username <u>] [--password <p>]\n',
+  logout: '用法: apollo-cli logout [profile]\n',
+  setup: `用法: ${SETUP_USAGE}\n`,
+  profile: `用法:
+  apollo-cli profile list
+  apollo-cli profile add <name> --base-url <url> [--portal-env ENV] [--cluster CLUSTER] [--default]
+  apollo-cli profile rm <name>
+  apollo-cli profile default <name>
+`,
+  ns: '用法: apollo-cli ns ls <appId>\n',
+  config: `用法:
+  apollo-cli config ls <appId> [-n ns] [--json]
+  apollo-cli config get <appId> <key|path> [-n ns] [--json]
+  apollo-cli config set <appId> <key|path> <value> [-n ns] [--comment text] [--string] [--dry-run]
+  apollo-cli config rm <appId> <key> [-n ns] [--yes] [--dry-run]
+  apollo-cli config publish <appId> [-n ns] [--title t] [--comment c] [--emergency] [--dry-run]
+  apollo-cli config releases <appId> [-n ns] [--limit n] [--json]
+`
+};
+
+const COMMANDS_HINT = '可用命令: login, logout, setup, profile, ns, config';
 
 class HelpExit extends Error {}
 
@@ -80,6 +110,7 @@ function parseCfg(extra = {}) {
     strict: true,
     options: {
       help: { type: 'boolean', short: 'h', default: false },
+      version: { type: 'boolean', short: 'V', default: false },
       profile: { type: 'string', short: 'p' },
       cluster: { type: 'string' },
       namespace: { type: 'string', short: 'n', default: 'application' },
@@ -133,12 +164,29 @@ function translateParseError(e) {
   return `参数解析失败: ${msg}`;
 }
 
-function parseCli(cfg) {
+/** 解析选项；命中 -h/--help 打印用法、-V/--version 打印版本后退出 */
+function parseCli(cfg, usage) {
+  let parsed;
   try {
-    return parseArgs(cfg);
+    parsed = parseArgs(cfg);
   } catch (e) {
     die(translateParseError(e));
   }
+  if (parsed.values.help) helpText(usage);
+  if (parsed.values.version) printVersion();
+  return parsed;
+}
+
+/** 分组命令的层级解析：-h/--help/-V/--version（或无参）时打印用法/版本，否则拆出前置选项并返回子命令 */
+function groupArgs(rawArgs, usage) {
+  const { prefix, rest } = splitGlobalPrefix(rawArgs);
+  const sub = rest[0];
+  if (sub === undefined || sub === '--help' || sub === '-h') {
+    if (prefix.length > 0) parseCli({ args: prefix, ...parseCfg() }, usage); // 前缀选项非法时优先报选项错误
+    helpText(usage);
+  }
+  if (sub === '--version' || sub === '-V') printVersion();
+  return { sub, args: [...prefix, ...rest.slice(1)] };
 }
 
 async function main(raw) {
@@ -146,23 +194,20 @@ async function main(raw) {
   const cmd = rest[0];
   if (cmd === undefined) {
     if (raw.length === 0) printHelp();
-    parseCli({ args: prefix, ...parseCfg() }); // 前缀选项非法时优先报选项错误
-    die('缺少命令。可用命令: login, logout, setup, profile, ns, config');
+    parseCli({ args: prefix, ...parseCfg() }, HELP); // 前缀选项非法时优先报选项错误
+    die(`缺少命令。${COMMANDS_HINT}`);
   }
   if (cmd === '--help' || cmd === '-h') printHelp();
-  if (cmd === '--version' || cmd === '-V') {
-    process.stdout.write(`apollo-cli ${pkg.version}\n`);
-    return;
-  }
+  if (cmd === '--version' || cmd === '-V') printVersion();
   const args = [...prefix, ...rest.slice(1)];
 
   switch (cmd) {
     case 'login': {
-      const p = parseCli({ args, ...parseCfg({ username: { type: 'string' }, password: { type: 'string' } }) });
+      const p = parseCli({ args, ...parseCfg({ username: { type: 'string' }, password: { type: 'string' } }) }, USAGE.login);
       return runCommands.login(p.positionals[0] || null, p.values);
     }
     case 'logout': {
-      const p = parseCli({ args, ...parseCfg() });
+      const p = parseCli({ args, ...parseCfg() }, USAGE.logout);
       return runCommands.logout(p.positionals[0] || null, p.values);
     }
     case 'setup': {
@@ -172,14 +217,14 @@ async function main(raw) {
         username: { type: 'string' },
         password: { type: 'string' },
         default: { type: 'boolean', default: false }
-      }) });
-      if (p.positionals.length > 1) die('参数过多。用法: apollo-cli setup [name] [--base-url <url>] [--username <u>] [--password <p>]');
+      }) }, USAGE.setup);
+      if (p.positionals.length > 1) die(`参数过多。用法: ${SETUP_USAGE}`);
       return runCommands.profileSetup(p.positionals[0] || null, p.values);
     }
     case 'profile': return handleProfile(args);
     case 'ns': return handleNs(args);
     case 'config': return handleConfig(args);
-    default: die(`未知命令: "${cmd}"\n可用命令: login, logout, setup, profile, ns, config`);
+    default: die(`未知命令: "${cmd}"\n${COMMANDS_HINT}`);
   }
 }
 
@@ -193,36 +238,34 @@ function helpText(text) {
   throw new HelpExit();
 }
 
+function printVersion() {
+  process.stdout.write(`apollo-cli ${VERSION}\n`);
+  throw new HelpExit();
+}
+
 function handleProfile(rawArgs) {
-  const { prefix, rest } = splitGlobalPrefix(rawArgs);
-  const sub = rest[0];
-  if (sub === undefined || sub === '--help' || sub === '-h') {
-    if (prefix.length > 0) parseCli({ args: prefix, ...parseCfg() });
-    helpText(`用法:
-  apollo-cli profile list
-  apollo-cli profile add <name> --base-url <url> [--portal-env ENV] [--cluster CLUSTER] [--default]
-  apollo-cli profile rm <name>
-  apollo-cli profile default <name>\n`);
-  }
-  const args = [...prefix, ...rest.slice(1)];
+  const { sub, args } = groupArgs(rawArgs, USAGE.profile);
   switch (sub) {
     case 'list': {
-      const p = parseCli({ args, ...parseCfg() });
+      const p = parseCli({ args, ...parseCfg() }, USAGE.profile);
       return runCommands.profileList(p.values);
     }
     case 'add': {
-      const p = parseCli({ args, ...parseCfg({ 'base-url': { type: 'string' }, 'portal-env': { type: 'string' }, default: { type: 'boolean', default: false } }) });
+      const p = parseCli(
+        { args, ...parseCfg({ 'base-url': { type: 'string' }, 'portal-env': { type: 'string' }, default: { type: 'boolean', default: false } }) },
+        USAGE.profile
+      );
       const [name] = pos(p, 1, 'profile add <name> --base-url <url>');
       if (!p.values['base-url']) die('--base-url 是必填参数');
       return runCommands.profileAdd(name, p.values);
     }
     case 'rm': {
-      const p = parseCli({ args, ...parseCfg() });
+      const p = parseCli({ args, ...parseCfg() }, USAGE.profile);
       const [name] = pos(p, 1, 'profile rm <name>');
       return runCommands.profileRm(name, p.values);
     }
     case 'default': {
-      const p = parseCli({ args, ...parseCfg() });
+      const p = parseCli({ args, ...parseCfg() }, USAGE.profile);
       const [name] = pos(p, 1, 'profile default <name>');
       return runCommands.profileDefault(name, p.values);
     }
@@ -231,40 +274,23 @@ function handleProfile(rawArgs) {
 }
 
 function handleNs(rawArgs) {
-  const { prefix, rest } = splitGlobalPrefix(rawArgs);
-  const sub = rest[0];
-  if (sub === undefined || sub === '--help' || sub === '-h') {
-    if (prefix.length > 0) parseCli({ args: prefix, ...parseCfg() });
-    helpText(`用法: apollo-cli ns ls <appId>\n`);
-  }
-  if (sub !== 'ls') die(`未知 ns 子命令。可用: ls`);
-  const p = parseCli({ args: [...prefix, ...rest.slice(1)], ...parseCfg() });
+  const { sub, args } = groupArgs(rawArgs, USAGE.ns);
+  if (sub !== 'ls') die('未知 ns 子命令。可用: ls');
+  const p = parseCli({ args, ...parseCfg() }, USAGE.ns);
   pos(p, 1, 'ns ls <appId>');
   return runCommands.nsList(p.positionals[0], p.values);
 }
 
 function handleConfig(rawArgs) {
-  const { prefix, rest } = splitGlobalPrefix(rawArgs);
-  const sub = rest[0];
-  if (sub === undefined || sub === '--help' || sub === '-h') {
-    if (prefix.length > 0) parseCli({ args: prefix, ...parseCfg() });
-    helpText(`用法:
-  apollo-cli config ls <appId> [-n ns] [--json]
-  apollo-cli config get <appId> <key|path> [-n ns] [--json]
-  apollo-cli config set <appId> <key|path> <value> [-n ns] [--comment text] [--string] [--dry-run]
-  apollo-cli config rm <appId> <key> [-n ns] [--yes] [--dry-run]
-  apollo-cli config publish <appId> [-n ns] [--title t] [--comment c] [--emergency] [--dry-run]
-  apollo-cli config releases <appId> [-n ns] [--limit n] [--json]\n`);
-  }
-  const args = [...prefix, ...rest.slice(1)];
+  const { sub, args } = groupArgs(rawArgs, USAGE.config);
   switch (sub) {
     case 'ls': {
-      const p = parseCli({ args, ...parseCfg() });
+      const p = parseCli({ args, ...parseCfg() }, USAGE.config);
       pos(p, 1, 'config ls <appId>');
       return runCommands.configList(p.positionals[0], p.values);
     }
     case 'get': {
-      const p = parseCli({ args, ...parseCfg() });
+      const p = parseCli({ args, ...parseCfg() }, USAGE.config);
       pos(p, 2, 'config get <appId> <key>');
       return runCommands.configGet(p.positionals[0], p.positionals[1], p.values);
     }
@@ -273,7 +299,7 @@ function handleConfig(rawArgs) {
         comment: { type: 'string' },
         string: { type: 'boolean', default: false },
         'dry-run': { type: 'boolean', default: false }
-      }) });
+      }) }, USAGE.config);
       pos(p, 3, 'config set <appId> <key> <value>');
       return runCommands.configSet(p.positionals[0], p.positionals[1], p.positionals[2], p.values);
     }
@@ -281,7 +307,7 @@ function handleConfig(rawArgs) {
       const p = parseCli({ args, ...parseCfg({
         yes: { type: 'boolean', default: false },
         'dry-run': { type: 'boolean', default: false }
-      }) });
+      }) }, USAGE.config);
       pos(p, 2, 'config rm <appId> <key>');
       return runCommands.configRm(p.positionals[0], p.positionals[1], p.values);
     }
@@ -291,12 +317,12 @@ function handleConfig(rawArgs) {
         comment: { type: 'string' },
         emergency: { type: 'boolean', default: false },
         'dry-run': { type: 'boolean', default: false }
-      }) });
+      }) }, USAGE.config);
       pos(p, 1, 'config publish <appId>');
       return runCommands.configPublish(p.positionals[0], p.values);
     }
     case 'releases': {
-      const p = parseCli({ args, ...parseCfg({ limit: { type: 'string', default: '10' } }) });
+      const p = parseCli({ args, ...parseCfg({ limit: { type: 'string', default: '10' } }) }, USAGE.config);
       pos(p, 1, 'config releases <appId>');
       const limit = Number(p.values.limit);
       if (!Number.isInteger(limit) || limit < 1) die(`--limit 必须是正整数（收到 "${p.values.limit}"）`);

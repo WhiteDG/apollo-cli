@@ -66,14 +66,71 @@ test('cli：无参与 --help/-h 输出帮助且不置 exitCode', async () => {
   }
 });
 
-test('cli：--version/-V 输出版本号且不置 exitCode', async () => {
+test('cli：--version/-V 输出版本号且不置 exitCode（版本号与 package.json 一致）', async () => {
   const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
-  for (const args of [['--version'], ['-V']]) {
+  // 覆盖根层、分组位、叶子位与位置参数之后；-h 在相同位置同样可用
+  const cases = [
+    ['--version'],
+    ['-V'],
+    ['--json', '-V'],
+    ['config', '-V'],
+    ['config', 'set', '-V'],
+    ['--json', 'config', '-V'],
+    ['ns', '-V'],
+    ['-n', 'x', 'ns', '-V'],
+    ['ns', 'ls', '-V'],
+    ['profile', '-V'],
+    ['profile', 'add', '-V'],
+    ['login', '-V'],
+    ['logout', '-V'],
+    ['setup', '-V'],
+    ['config', 'set', 'App', 'k', 'v', '-V']
+  ];
+  for (const args of cases) {
     const res = await runCli(args);
     assert.equal(res.stdout, `apollo-cli ${version}\n`, `args=${args.join(' ')}`);
     assert.equal(res.stderr, '');
     assert.equal(res.exitCode, undefined, `args=${args.join(' ')} 不应设置 exitCode`);
   }
+});
+
+test('cli：-h/--help 在命令链各位置输出用法且不执行命令、不动会话', async t => {
+  // 凭据与会话都齐备：若帮助分支没生效，login 会真的发请求、logout 会真的清会话
+  seedUserConfig(iso.home, {
+    default: 'dev',
+    profiles: { dev: { baseUrl: portal, portalEnv: 'DEV', cluster: 'default' } },
+    env: { APOLLO_DEV_USERNAME: 'u', APOLLO_DEV_PASSWORD: 'p' }
+  });
+  seedSession(iso.home, 'dev', { baseUrl: portal, cookie: 'sess-cookie', username: 'alice', savedAt: 1 });
+  const sessionFile = join(iso.home, '.apollo-cli', 'session.json');
+  const cases = [
+    [['--json', '-h'], /^apollo-cli — Apollo 配置中心命令行工具\n/],
+    [['--json', 'config', '-h'], /用法:\n  apollo-cli config ls <appId>/],
+    [['config', '-h'], /用法:\n  apollo-cli config ls <appId>/],
+    [['config', 'set', '-h'], /config set <appId> <key\|path> <value>/],
+    [['config', 'rm', 'App', 'k', '-h'], /config rm <appId> <key>/],
+    [['ns', '-h'], /^用法: apollo-cli ns ls <appId>\n$/],
+    [['ns', 'ls', '-h'], /^用法: apollo-cli ns ls <appId>\n$/],
+    [['-p', 'dev', 'profile', '-h'], /用法:\n  apollo-cli profile list/],
+    [['profile', '-h'], /用法:\n  apollo-cli profile list/],
+    [['profile', 'add', '--help'], /apollo-cli profile add <name> --base-url <url>/],
+    [['login', '-h'], /^用法: apollo-cli login \[profile\] \[--username <u>\] \[--password <p>\]\n$/],
+    [['-p', 'dev', 'login', '-h'], /^用法: apollo-cli login \[profile\]/],
+    [['login', 'dev', '-h'], /^用法: apollo-cli login \[profile\]/],
+    [['logout', '-h'], /^用法: apollo-cli logout \[profile\]\n$/],
+    [['setup', '-h'], /^用法: apollo-cli setup \[name\] \[--base-url <url>\] \[--username <u>\] \[--password <p>\]\n$/]
+  ];
+  const calls = fetchStub(t, () => {
+    throw new Error('帮助分支不应发起网络请求');
+  });
+  for (const [args, pattern] of cases) {
+    const res = await runCli(args);
+    assert.match(res.stdout, pattern, `args=${args.join(' ')}`);
+    assert.equal(res.stderr, '', `args=${args.join(' ')}`);
+    assert.equal(res.exitCode, undefined, `args=${args.join(' ')} 不应设置 exitCode`);
+  }
+  assert.equal(calls.length, 0, '帮助分支不应发起网络请求');
+  assert.equal(readJSON(sessionFile).dev.cookie, 'sess-cookie', '帮助分支不应改动 session（logout -h 不得清会话）');
 });
 
 test('cli：未知命令报错并置 exitCode=1', async () => {
@@ -254,6 +311,19 @@ test('cli：仅全局选项或裸选项时报缺少命令/未知选项', async (
   const bogus = await runCli(['--bogus']);
   assert.match(bogus.stderr, /^未知选项 '--bogus'/);
   assert.equal(bogus.exitCode, 1);
+
+  // 裸 "-"、"--" 不是信息标志，按未知命令报错
+  const dash = await runCli(['-']);
+  assert.equal(dash.stderr, '未知命令: "-"\n可用命令: login, logout, setup, profile, ns, config\n');
+  assert.equal(dash.exitCode, 1);
+
+  const rootDashes = await runCli(['--', 'config', 'ls', 'App']);
+  assert.equal(rootDashes.stderr, '未知命令: "--"\n可用命令: login, logout, setup, profile, ns, config\n');
+  assert.equal(rootDashes.exitCode, 1);
+
+  const groupDashes = await runCli(['config', '--', 'ls']);
+  assert.equal(groupDashes.stderr, '未知 config 子命令: "--"。可用: ls, get, set, rm, publish, releases\n');
+  assert.equal(groupDashes.exitCode, 1);
 });
 
 test('cli：config set --dry-run 端到端（只读并输出计划）', async t => {

@@ -15,7 +15,7 @@ This file provides guidance to the AI agent when working with code in this repos
 - `skills/apollo/` 是随仓库分发的 AI skill（`SKILL.md` + `evals/` + `scripts/apollo-cli.cjs` + `README.md`）：用户机器上有 Node >= 21 即可直接跑自带产物，无需安装本包；skill 不走 npm 分发，`package.json` 的 `files` 无需加 `skills`。
 - SKILL.md 里统一用 `node <SK>/scripts/apollo-cli.cjs <命令>`（`<SK>` = SKILL.md 所在目录的绝对路径；正文没有 `${SKILL_ROOT}` 之类变量，靠文首的解析阶梯得到）。改调用方式时要连同"命令速查/典型流程"一起改。
 - SKILL.md、README、evals 随 skill 独立分发，必须脱离本仓库语境：只讲"技能自带的 CLI 怎么用"，不出现"打包/产物/单文件/npm 安装"等描述（这些只属于仓库文档与 `scripts/build.js`）。
-- 产物已入库，改完源码忘记重打包会让拿到 skill 的用户执行旧版本；`.gitattributes` 把该产物固定为 LF（Windows `core.autocrlf=true` 检出会变 CRLF，导致 `build:check` 误报过期）。
+- 产物已入库，改完源码忘记重打包会让拿到 skill 的用户执行旧版本；`.gitattributes` 把该产物固定为 LF，保证仓库内与该文件在各平台的检出内容一致（`scripts/build.js --check` 另有 CRLF 归一兜底，不会误报过期）。
 - 手动跑自带产物做验证时先 `cd` 到临时目录：CLI 按当前目录读写项目级 `apollo-cli.config.json`（含凭据、已 gitignore），在仓库根直接跑写命令（如 `profile add`、默认 profile 变更）会改动仓库里真实的该文件。
 
 ## 语言
@@ -50,6 +50,8 @@ This file provides guidance to the AI agent when working with code in this repos
 - 非凭据的 CLI 变量（如 `APOLLO_PROFILE`）读取走 `src/store.js` 的 `getEnvVar`（process.env 优先，回退 config.json 的 `env` 段）；凭据解析在 `src/auth.js` 的 `resolveCredentials`（flags → shell/.env → config.json profile 字段 → config.json env 段），两条链的 shell/.env 优先于 config.json 的顺序须保持一致，新增来源时沿用该层级并补测试。
 - 本地 `.env` 与 `apollo-cli.config.json` 含真实凭据且已 gitignore：绝不打印其内容或提交它们。
 - 未经用户要求不要访问线上 Apollo Portal（登录、读写配置均有副作用）。
+- 版本号唯一来源是 `src/version.js` 的 `VERSION`（`test/cli.test.js` 的 `--version` 断言会把它与 `package.json` 的 version 比对、拦住漂移）：一是 Node 21.x 与 22.0–22.11 上 `import ... with { type: 'json' }` 仍是实验特性，会往 stderr 打 ExperimentalWarning、污染 `--json` 模式下的错误输出；二是避免整份 package.json（含 devDependencies/scripts）被内联进打包产物，让升级 esbuild 这类改动也必须重新打包。发版时 `package.json` 与 `src/version.js` 两处都要改（测试会拦漂移）。
+- `-h/--help` 与 `-V/--version` 在 `--` 之前的任意位置都生效（`apollo-cli config -V`、`apollo-cli --json config -h`、`apollo-cli config set -V` 均可用），可放在命令链任一层级；其余选项可放在子命令前或后，但写在子命令前时其后须紧跟子命令。改参数解析时保持该行为并补 `test/cli.test.js` 的位置矩阵用例。
 - 需要 Node >= 21（用到 `getSetCookie()` 等新 API），不要写旧版本兼容代码。
 - `src/store.js` 的原子写入带 Windows 杀软文件锁重试（EPERM/EACCES/EBUSY），改持久化逻辑时保留该行为。
 - `src/output.js` 的表格按 CJK 双宽字符计算列宽，新增输出列时沿用此逻辑。

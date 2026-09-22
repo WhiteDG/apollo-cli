@@ -8818,34 +8818,8 @@ function promptConfirm(question) {
   });
 }
 
-// package.json
-var package_default = {
-  name: "apollo-cli",
-  version: "0.1.0",
-  description: "Apollo \u914D\u7F6E\u4E2D\u5FC3\u547D\u4EE4\u884C\u5DE5\u5177",
-  type: "module",
-  bin: {
-    "apollo-cli": "bin/apollo-cli.js"
-  },
-  engines: {
-    node: ">=21"
-  },
-  files: [
-    "bin",
-    "src"
-  ],
-  scripts: {
-    build: "node scripts/build.js",
-    "build:check": "node scripts/build.js --check",
-    test: 'node --test "test/**/*.test.js"'
-  },
-  dependencies: {
-    yaml: "^2.9.1"
-  },
-  devDependencies: {
-    esbuild: "^0.28.2"
-  }
-};
+// src/version.js
+var VERSION = "0.1.0";
 
 // src/cli.js
 var HELP = `apollo-cli \u2014 Apollo \u914D\u7F6E\u4E2D\u5FC3\u547D\u4EE4\u884C\u5DE5\u5177
@@ -8901,7 +8875,12 @@ profile \u7BA1\u7406:
   --cluster <name>              \u96C6\u7FA4\uFF0C\u9ED8\u8BA4\u8BFB\u53D6 profile \u914D\u7F6E\uFF08\u672A\u914D\u7F6E\u5219 "default"\uFF09
   -n, --namespace <name>        \u547D\u540D\u7A7A\u95F4\uFF0C\u9ED8\u8BA4 "application"
   --json                        \u8F93\u51FA JSON \u683C\u5F0F\uFF08\u8BFB\u5199\u547D\u4EE4\u5747\u652F\u6301\uFF09
+  -h, --help                    \u663E\u793A\u5E2E\u52A9
   -V, --version                 \u663E\u793A\u7248\u672C\u53F7
+
+-h/--help \u4E0E -V/--version \u5728 "--" \u4E4B\u524D\u7684\u4EFB\u610F\u4F4D\u7F6E\u90FD\u751F\u6548\uFF0C\u53EF\u653E\u5728\u547D\u4EE4\u94FE\u4EFB\u4E00\u5C42\u7EA7\uFF1A
+  apollo-cli -V\u3001apollo-cli --json -V\u3001apollo-cli config -V\u3001apollo-cli config set -V \u5747\u53EF\u7528\uFF1B
+  \u5176\u4F59\u9009\u9879\u5199\u5728\u5B50\u547D\u4EE4\u524D\u65F6\uFF0C\u5176\u540E\u987B\u7D27\u8DDF\u5B50\u547D\u4EE4\uFF08\u5982 apollo-cli --json config ls MyApp\uFF09\u3002
 
 \u793A\u4F8B:
   apollo-cli setup fat --base-url http://portal.example.com:8070   # \u4EA4\u4E92\u8F93\u5165\u8D26\u53F7\u5BC6\u7801\uFF0C\u4E00\u6B65\u5B8C\u6210\u914D\u7F6E
@@ -8913,6 +8892,29 @@ profile \u7BA1\u7406:
   apollo-cli config set MyApp 'server.ports[0]' 8080 -n app.yml   # \u6587\u4EF6\u578B\u547D\u540D\u7A7A\u95F4\u6309\u5B57\u6BB5\u8DEF\u5F84\uFF08\u542B [] \u7684\u8DEF\u5F84\u5EFA\u8BAE\u52A0\u5F15\u53F7\uFF0C\u907F\u514D shell glob\uFF09
   apollo-cli config publish MyApp --title "v1.0.1" --emergency
 `;
+var SETUP_USAGE = "apollo-cli setup [name] [--base-url <url>] [--username <u>] [--password <p>]";
+var USAGE = {
+  login: "\u7528\u6CD5: apollo-cli login [profile] [--username <u>] [--password <p>]\n",
+  logout: "\u7528\u6CD5: apollo-cli logout [profile]\n",
+  setup: `\u7528\u6CD5: ${SETUP_USAGE}
+`,
+  profile: `\u7528\u6CD5:
+  apollo-cli profile list
+  apollo-cli profile add <name> --base-url <url> [--portal-env ENV] [--cluster CLUSTER] [--default]
+  apollo-cli profile rm <name>
+  apollo-cli profile default <name>
+`,
+  ns: "\u7528\u6CD5: apollo-cli ns ls <appId>\n",
+  config: `\u7528\u6CD5:
+  apollo-cli config ls <appId> [-n ns] [--json]
+  apollo-cli config get <appId> <key|path> [-n ns] [--json]
+  apollo-cli config set <appId> <key|path> <value> [-n ns] [--comment text] [--string] [--dry-run]
+  apollo-cli config rm <appId> <key> [-n ns] [--yes] [--dry-run]
+  apollo-cli config publish <appId> [-n ns] [--title t] [--comment c] [--emergency] [--dry-run]
+  apollo-cli config releases <appId> [-n ns] [--limit n] [--json]
+`
+};
+var COMMANDS_HINT = "\u53EF\u7528\u547D\u4EE4: login, logout, setup, profile, ns, config";
 var HelpExit = class extends Error {
 };
 function die2(msg) {
@@ -8924,6 +8926,7 @@ function parseCfg(extra = {}) {
     strict: true,
     options: {
       help: { type: "boolean", short: "h", default: false },
+      version: { type: "boolean", short: "V", default: false },
       profile: { type: "string", short: "p" },
       cluster: { type: "string" },
       namespace: { type: "string", short: "n", default: "application" },
@@ -8969,35 +8972,45 @@ function translateParseError(e) {
   if (m) return `\u9009\u9879 '${m[1]}' \u4E0D\u63A5\u53D7\u53C2\u6570\u503C`;
   return `\u53C2\u6570\u89E3\u6790\u5931\u8D25: ${msg}`;
 }
-function parseCli(cfg) {
+function parseCli(cfg, usage) {
+  let parsed;
   try {
-    return (0, import_node_util.parseArgs)(cfg);
+    parsed = (0, import_node_util.parseArgs)(cfg);
   } catch (e) {
     die2(translateParseError(e));
   }
+  if (parsed.values.help) helpText(usage);
+  if (parsed.values.version) printVersion();
+  return parsed;
+}
+function groupArgs(rawArgs, usage) {
+  const { prefix, rest } = splitGlobalPrefix(rawArgs);
+  const sub = rest[0];
+  if (sub === void 0 || sub === "--help" || sub === "-h") {
+    if (prefix.length > 0) parseCli({ args: prefix, ...parseCfg() }, usage);
+    helpText(usage);
+  }
+  if (sub === "--version" || sub === "-V") printVersion();
+  return { sub, args: [...prefix, ...rest.slice(1)] };
 }
 async function main(raw) {
   const { prefix, rest } = splitGlobalPrefix(raw);
   const cmd = rest[0];
   if (cmd === void 0) {
     if (raw.length === 0) printHelp();
-    parseCli({ args: prefix, ...parseCfg() });
-    die2("\u7F3A\u5C11\u547D\u4EE4\u3002\u53EF\u7528\u547D\u4EE4: login, logout, setup, profile, ns, config");
+    parseCli({ args: prefix, ...parseCfg() }, HELP);
+    die2(`\u7F3A\u5C11\u547D\u4EE4\u3002${COMMANDS_HINT}`);
   }
   if (cmd === "--help" || cmd === "-h") printHelp();
-  if (cmd === "--version" || cmd === "-V") {
-    process.stdout.write(`apollo-cli ${package_default.version}
-`);
-    return;
-  }
+  if (cmd === "--version" || cmd === "-V") printVersion();
   const args = [...prefix, ...rest.slice(1)];
   switch (cmd) {
     case "login": {
-      const p = parseCli({ args, ...parseCfg({ username: { type: "string" }, password: { type: "string" } }) });
+      const p = parseCli({ args, ...parseCfg({ username: { type: "string" }, password: { type: "string" } }) }, USAGE.login);
       return login2(p.positionals[0] || null, p.values);
     }
     case "logout": {
-      const p = parseCli({ args, ...parseCfg() });
+      const p = parseCli({ args, ...parseCfg() }, USAGE.logout);
       return logout(p.positionals[0] || null, p.values);
     }
     case "setup": {
@@ -9007,8 +9020,8 @@ async function main(raw) {
         username: { type: "string" },
         password: { type: "string" },
         default: { type: "boolean", default: false }
-      }) });
-      if (p.positionals.length > 1) die2("\u53C2\u6570\u8FC7\u591A\u3002\u7528\u6CD5: apollo-cli setup [name] [--base-url <url>] [--username <u>] [--password <p>]");
+      }) }, USAGE.setup);
+      if (p.positionals.length > 1) die2(`\u53C2\u6570\u8FC7\u591A\u3002\u7528\u6CD5: ${SETUP_USAGE}`);
       return profileSetup(p.positionals[0] || null, p.values);
     }
     case "profile":
@@ -9019,7 +9032,7 @@ async function main(raw) {
       return handleConfig(args);
     default:
       die2(`\u672A\u77E5\u547D\u4EE4: "${cmd}"
-\u53EF\u7528\u547D\u4EE4: login, logout, setup, profile, ns, config`);
+${COMMANDS_HINT}`);
   }
 }
 function printHelp() {
@@ -9030,37 +9043,34 @@ function helpText(text) {
   process.stdout.write(text);
   throw new HelpExit();
 }
-function handleProfile(rawArgs) {
-  const { prefix, rest } = splitGlobalPrefix(rawArgs);
-  const sub = rest[0];
-  if (sub === void 0 || sub === "--help" || sub === "-h") {
-    if (prefix.length > 0) parseCli({ args: prefix, ...parseCfg() });
-    helpText(`\u7528\u6CD5:
-  apollo-cli profile list
-  apollo-cli profile add <name> --base-url <url> [--portal-env ENV] [--cluster CLUSTER] [--default]
-  apollo-cli profile rm <name>
-  apollo-cli profile default <name>
+function printVersion() {
+  process.stdout.write(`apollo-cli ${VERSION}
 `);
-  }
-  const args = [...prefix, ...rest.slice(1)];
+  throw new HelpExit();
+}
+function handleProfile(rawArgs) {
+  const { sub, args } = groupArgs(rawArgs, USAGE.profile);
   switch (sub) {
     case "list": {
-      const p = parseCli({ args, ...parseCfg() });
+      const p = parseCli({ args, ...parseCfg() }, USAGE.profile);
       return profileList(p.values);
     }
     case "add": {
-      const p = parseCli({ args, ...parseCfg({ "base-url": { type: "string" }, "portal-env": { type: "string" }, default: { type: "boolean", default: false } }) });
+      const p = parseCli(
+        { args, ...parseCfg({ "base-url": { type: "string" }, "portal-env": { type: "string" }, default: { type: "boolean", default: false } }) },
+        USAGE.profile
+      );
       const [name] = pos(p, 1, "profile add <name> --base-url <url>");
       if (!p.values["base-url"]) die2("--base-url \u662F\u5FC5\u586B\u53C2\u6570");
       return profileAdd(name, p.values);
     }
     case "rm": {
-      const p = parseCli({ args, ...parseCfg() });
+      const p = parseCli({ args, ...parseCfg() }, USAGE.profile);
       const [name] = pos(p, 1, "profile rm <name>");
       return profileRm(name, p.values);
     }
     case "default": {
-      const p = parseCli({ args, ...parseCfg() });
+      const p = parseCli({ args, ...parseCfg() }, USAGE.profile);
       const [name] = pos(p, 1, "profile default <name>");
       return profileDefault(name, p.values);
     }
@@ -9069,41 +9079,22 @@ function handleProfile(rawArgs) {
   }
 }
 function handleNs(rawArgs) {
-  const { prefix, rest } = splitGlobalPrefix(rawArgs);
-  const sub = rest[0];
-  if (sub === void 0 || sub === "--help" || sub === "-h") {
-    if (prefix.length > 0) parseCli({ args: prefix, ...parseCfg() });
-    helpText(`\u7528\u6CD5: apollo-cli ns ls <appId>
-`);
-  }
-  if (sub !== "ls") die2(`\u672A\u77E5 ns \u5B50\u547D\u4EE4\u3002\u53EF\u7528: ls`);
-  const p = parseCli({ args: [...prefix, ...rest.slice(1)], ...parseCfg() });
+  const { sub, args } = groupArgs(rawArgs, USAGE.ns);
+  if (sub !== "ls") die2("\u672A\u77E5 ns \u5B50\u547D\u4EE4\u3002\u53EF\u7528: ls");
+  const p = parseCli({ args, ...parseCfg() }, USAGE.ns);
   pos(p, 1, "ns ls <appId>");
   return nsList(p.positionals[0], p.values);
 }
 function handleConfig(rawArgs) {
-  const { prefix, rest } = splitGlobalPrefix(rawArgs);
-  const sub = rest[0];
-  if (sub === void 0 || sub === "--help" || sub === "-h") {
-    if (prefix.length > 0) parseCli({ args: prefix, ...parseCfg() });
-    helpText(`\u7528\u6CD5:
-  apollo-cli config ls <appId> [-n ns] [--json]
-  apollo-cli config get <appId> <key|path> [-n ns] [--json]
-  apollo-cli config set <appId> <key|path> <value> [-n ns] [--comment text] [--string] [--dry-run]
-  apollo-cli config rm <appId> <key> [-n ns] [--yes] [--dry-run]
-  apollo-cli config publish <appId> [-n ns] [--title t] [--comment c] [--emergency] [--dry-run]
-  apollo-cli config releases <appId> [-n ns] [--limit n] [--json]
-`);
-  }
-  const args = [...prefix, ...rest.slice(1)];
+  const { sub, args } = groupArgs(rawArgs, USAGE.config);
   switch (sub) {
     case "ls": {
-      const p = parseCli({ args, ...parseCfg() });
+      const p = parseCli({ args, ...parseCfg() }, USAGE.config);
       pos(p, 1, "config ls <appId>");
       return configList(p.positionals[0], p.values);
     }
     case "get": {
-      const p = parseCli({ args, ...parseCfg() });
+      const p = parseCli({ args, ...parseCfg() }, USAGE.config);
       pos(p, 2, "config get <appId> <key>");
       return configGet(p.positionals[0], p.positionals[1], p.values);
     }
@@ -9112,7 +9103,7 @@ function handleConfig(rawArgs) {
         comment: { type: "string" },
         string: { type: "boolean", default: false },
         "dry-run": { type: "boolean", default: false }
-      }) });
+      }) }, USAGE.config);
       pos(p, 3, "config set <appId> <key> <value>");
       return configSet(p.positionals[0], p.positionals[1], p.positionals[2], p.values);
     }
@@ -9120,7 +9111,7 @@ function handleConfig(rawArgs) {
       const p = parseCli({ args, ...parseCfg({
         yes: { type: "boolean", default: false },
         "dry-run": { type: "boolean", default: false }
-      }) });
+      }) }, USAGE.config);
       pos(p, 2, "config rm <appId> <key>");
       return configRm(p.positionals[0], p.positionals[1], p.values);
     }
@@ -9130,12 +9121,12 @@ function handleConfig(rawArgs) {
         comment: { type: "string" },
         emergency: { type: "boolean", default: false },
         "dry-run": { type: "boolean", default: false }
-      }) });
+      }) }, USAGE.config);
       pos(p, 1, "config publish <appId>");
       return configPublish(p.positionals[0], p.values);
     }
     case "releases": {
-      const p = parseCli({ args, ...parseCfg({ limit: { type: "string", default: "10" } }) });
+      const p = parseCli({ args, ...parseCfg({ limit: { type: "string", default: "10" } }) }, USAGE.config);
       pos(p, 1, "config releases <appId>");
       const limit = Number(p.values.limit);
       if (!Number.isInteger(limit) || limit < 1) die2(`--limit \u5FC5\u987B\u662F\u6B63\u6574\u6570\uFF08\u6536\u5230 "${p.values.limit}"\uFF09`);
