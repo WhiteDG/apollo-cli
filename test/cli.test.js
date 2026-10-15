@@ -442,11 +442,14 @@ test('cli：login --username/--password 成功后落盘 session', async t => {
     idx === 0 ? redirectResponse('/apps', ['JSESSIONID=cli']) : jsonResponse([])
   );
   const res = await runCli(['login', 'dev', '--username', 'u', '--password', 'p']);
-  assert.equal(res.stdout, '登录成功 (dev: http://portal.test) [u]\n');
+  assert.match(res.stdout, /^登录成功 \(dev: http:\/\/portal\.test\) \[u\]\n凭据已保存到用户级配置: .*config\.json\n$/);
   assert.equal(res.exitCode, undefined);
   const session = readJSON(join(iso.home, '.apollo-cli', 'session.json'));
   assert.equal(session.dev.username, 'u');
   assert.equal(session.dev.cookie, 'NG_TRANSLATE_LANG_KEY=zh-CN; JSESSIONID=cli');
+  const cfg = readJSON(userConfigFile);
+  assert.equal(cfg.env.APOLLO_DEV_USERNAME, 'u');
+  assert.equal(cfg.env.APOLLO_DEV_PASSWORD, 'p');
 });
 
 test('cli：login 有 profile 但无凭据时报未找到凭据', async () => {
@@ -463,7 +466,7 @@ test('cli：login 有 profile 但无凭据时报未找到凭据', async () => {
 test('cli：logout 清除登录状态', async () => {
   seedDev();
   const res = await runCli(['logout', 'dev']);
-  assert.equal(res.stdout, '已清除 dev 的登录状态\n');
+  assert.equal(res.stdout, '已退出 dev：会话已清除（用户级配置中无凭据）\n');
   assert.equal(res.exitCode, undefined);
   assert.deepEqual(readJSON(join(iso.home, '.apollo-cli', 'session.json')), {});
 });

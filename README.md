@@ -74,6 +74,8 @@ apollo-cli profile add fat --base-url http://portal.example.com:8070 --default
 
 profile 定义里还支持可选的手写字段：`username`/`password`（凭据，见「配置凭据」方式五）。`profile add` 只覆盖 `baseUrl`/`portalEnv`/`cluster`，手写字段会保留。
 
+`profile rm <name>` 删除 profile 时会连同清除其会话与用户级配置中的凭据（env 段键与手写字段）；若该 profile 的变量前缀被其他 profile 共用（如 `fat-2` 与 `fat.2` 都归一到 `APOLLO_FAT_2_`），env 段凭据会保留并提示。
+
 ### 2. 配置凭据
 
 最省事的方式是用 `apollo-cli setup` 一条命令写入（存的即下方「方式四」的 env 段）；以下是手动配置方式。
@@ -121,7 +123,9 @@ cp .env.example .env   # 然后填入真实凭据
 apollo-cli login fat
 ```
 
-登录成功后 cookie 保存在 `~/.apollo-cli/session.json`，会话过期时自动重新登录。
+登录成功后 cookie 保存在 `~/.apollo-cli/session.json`，会话过期时自动重新登录。`login` 通过 `--username/--password` 传入的凭据会保存到用户级配置的 env 段（保证过期后能自动重登）；来自 shell/.env 或 config.json 的凭据已在原处持久化，不会被复制。
+
+`logout` 会清除会话，并删除用户级配置中该 profile 的凭据（env 段键与手写的 `username`/`password` 字段）；shell/.env 或项目级配置中的凭据无法代为清除，若仍存在会提示「下一条命令会自动重新登录」。
 
 ### 4. 管理配置
 

@@ -16,8 +16,8 @@ const HELP = `apollo-cli — Apollo 配置中心命令行工具
     --default                      设为默认 profile（无任何 profile 时自动）
 
 登录/登出:
-  login  [profile]             登录并保存 cookie
-  logout [profile]             清除 profile 登录状态
+  login  [profile]             登录并保存 cookie（--username/--password 传入的凭据会保存到用户级配置）
+  logout [profile]             退出：清除会话与用户级配置中该 profile 的凭据
 
 profile 管理:
   profile list                 列出 profile
@@ -26,7 +26,7 @@ profile 管理:
     --portal-env <env>              Apollo 内部环境名，默认 profile 名大写
     --cluster <name>                默认集群，默认 "default"
     --default                       设为默认 profile
-  profile rm <name>            删除 profile
+  profile rm <name>            删除 profile（连同其会话与用户级凭据）
   profile default <name>       设为默认 profile
 
 命名空间:

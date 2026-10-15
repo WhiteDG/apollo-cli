@@ -7543,6 +7543,31 @@ function removeProfile(name) {
   }
   return scopes;
 }
+function clearUserCredentials(profileName, prefix) {
+  const result = { envKeys: [], profileFields: false };
+  const user = readJSON(USER_CONFIG);
+  if (!user) return result;
+  let changed = false;
+  if (user.env && typeof user.env === "object") {
+    for (const suffix of ["USERNAME", "PASSWORD"]) {
+      const key = `${prefix}${suffix}`;
+      if (Object.hasOwn(user.env, key)) {
+        delete user.env[key];
+        result.envKeys.push(key);
+        changed = true;
+      }
+    }
+  }
+  const profile = user.profiles?.[profileName];
+  if (profile && (profile.username !== void 0 || profile.password !== void 0)) {
+    delete profile.username;
+    delete profile.password;
+    result.profileFields = true;
+    changed = true;
+  }
+  if (changed) writeJSON(USER_CONFIG, user);
+  return result;
+}
 function setDefaultProfile(name) {
   const project = (0, import_node_fs2.existsSync)(PROJECT_CONFIG) ? readJSON(PROJECT_CONFIG) : null;
   if (project && project.default) {
@@ -8393,12 +8418,38 @@ async function login2(profileArg, opts) {
   }
   const cookie = await login(creds, baseUrl);
   saveSession(profileName, { baseUrl, cookie, username: creds.username, savedAt: Date.now() });
-  emit(opts, { profile: profileName, baseUrl, username: creds.username }, `\u767B\u5F55\u6210\u529F (${profileName}: ${baseUrl}) [${creds.username}]`);
+  let configPath = null;
+  if (creds.from === "--flag") {
+    const prefix = profileVarPrefix(profileName);
+    saveUserConfig({ env: { [`${prefix}USERNAME`]: creds.username, [`${prefix}PASSWORD`]: creds.password } }, { mode: 384 });
+    configPath = userConfigPath();
+  }
+  const text = `\u767B\u5F55\u6210\u529F (${profileName}: ${baseUrl}) [${creds.username}]` + (configPath ? `
+\u51ED\u636E\u5DF2\u4FDD\u5B58\u5230\u7528\u6237\u7EA7\u914D\u7F6E: ${configPath}` : "");
+  emit(opts, {
+    profile: profileName,
+    baseUrl,
+    username: creds.username,
+    ...configPath ? { credentialsSaved: true, configPath } : {}
+  }, text);
 }
 function logout(profileArg, opts = {}) {
   const ctx = profileCtx(profileArg, opts);
   clearSession(ctx.profileName);
-  emit(opts, { profile: ctx.profileName }, `\u5DF2\u6E05\u9664 ${ctx.profileName} \u7684\u767B\u5F55\u72B6\u6001`);
+  const prefix = profileVarPrefix(ctx.profileName);
+  const cleared = clearUserCredentials(ctx.profileName, prefix);
+  const clearedParts = [
+    ...cleared.envKeys,
+    ...cleared.profileFields ? [`profiles.${ctx.profileName} \u624B\u5199\u51ED\u636E\u5B57\u6BB5`] : []
+  ];
+  const remaining = resolveCredentials(ctx.profileName, {}, loadConfig());
+  const text = `\u5DF2\u9000\u51FA ${ctx.profileName}\uFF1A\u4F1A\u8BDD\u5DF2\u6E05\u9664` + (clearedParts.length > 0 ? `\uFF0C\u7528\u6237\u7EA7\u51ED\u636E\u5DF2\u5220\u9664\uFF08${clearedParts.join("\u3001")}\uFF09` : "\uFF08\u7528\u6237\u7EA7\u914D\u7F6E\u4E2D\u65E0\u51ED\u636E\uFF09") + (remaining ? `
+\u6CE8\u610F\uFF1A\u4ECD\u6709\u53EF\u7528\u51ED\u636E\uFF08\u6765\u6E90: ${remaining.from}\uFF09\uFF0C\u4E0B\u4E00\u6761\u547D\u4EE4\u4F1A\u81EA\u52A8\u91CD\u65B0\u767B\u5F55\uFF1B\u5982\u9700\u5F7B\u5E95\u9000\u51FA\u8BF7\u5148\u79FB\u9664\u8BE5\u6765\u6E90` : "");
+  emit(opts, {
+    profile: ctx.profileName,
+    credentialsCleared: clearedParts.length > 0,
+    credentialsRemaining: !!remaining
+  }, text);
 }
 function profileList(opts = {}) {
   const { profiles, default: def } = getAllProfiles();
@@ -8530,7 +8581,19 @@ function profileRm(name, opts = {}) {
     die(`profile "${name}" \u4E0D\u5B58\u5728`);
   }
   clearSession(name);
-  emit(opts, { name, removedFrom: scopes }, `profile "${name}" \u5DF2\u5220\u9664\uFF08\u4ECE${scopes.join("\u3001")}\u4E2D\u79FB\u9664\uFF09`);
+  const prefix = profileVarPrefix(name);
+  const shared = Object.keys(getAllProfiles().profiles).some((n) => profileVarPrefix(n) === prefix);
+  const cleared = shared ? { envKeys: [], profileFields: false } : clearUserCredentials(name, prefix);
+  const notes = [];
+  if (cleared.envKeys.length > 0) notes.push(`\u5DF2\u6E05\u9664\u7528\u6237\u7EA7\u914D\u7F6E\u4E2D\u7684\u51ED\u636E\uFF08${cleared.envKeys.join("\u3001")}\uFF09`);
+  if (shared) notes.push(`\u6CE8\u610F\uFF1A\u5176\u4ED6 profile \u5F52\u4E00\u540E\u5171\u7528 ${prefix}* \u53D8\u91CF\uFF0Cenv \u6BB5\u51ED\u636E\u672A\u6E05\u9664`);
+  emit(opts, {
+    name,
+    removedFrom: scopes,
+    ...cleared.envKeys.length > 0 ? { clearedCredentials: cleared.envKeys } : {},
+    ...shared ? { sharedPrefix: true } : {}
+  }, `profile "${name}" \u5DF2\u5220\u9664\uFF08\u4ECE${scopes.join("\u3001")}\u4E2D\u79FB\u9664\uFF09` + notes.map((note) => `
+${note}`).join(""));
 }
 function profileDefault(name, opts = {}) {
   const { profiles } = getAllProfiles();
@@ -8867,8 +8930,8 @@ var HELP = `apollo-cli \u2014 Apollo \u914D\u7F6E\u4E2D\u5FC3\u547D\u4EE4\u884C\
     --default                      \u8BBE\u4E3A\u9ED8\u8BA4 profile\uFF08\u65E0\u4EFB\u4F55 profile \u65F6\u81EA\u52A8\uFF09
 
 \u767B\u5F55/\u767B\u51FA:
-  login  [profile]             \u767B\u5F55\u5E76\u4FDD\u5B58 cookie
-  logout [profile]             \u6E05\u9664 profile \u767B\u5F55\u72B6\u6001
+  login  [profile]             \u767B\u5F55\u5E76\u4FDD\u5B58 cookie\uFF08--username/--password \u4F20\u5165\u7684\u51ED\u636E\u4F1A\u4FDD\u5B58\u5230\u7528\u6237\u7EA7\u914D\u7F6E\uFF09
+  logout [profile]             \u9000\u51FA\uFF1A\u6E05\u9664\u4F1A\u8BDD\u4E0E\u7528\u6237\u7EA7\u914D\u7F6E\u4E2D\u8BE5 profile \u7684\u51ED\u636E
 
 profile \u7BA1\u7406:
   profile list                 \u5217\u51FA profile
@@ -8877,7 +8940,7 @@ profile \u7BA1\u7406:
     --portal-env <env>              Apollo \u5185\u90E8\u73AF\u5883\u540D\uFF0C\u9ED8\u8BA4 profile \u540D\u5927\u5199
     --cluster <name>                \u9ED8\u8BA4\u96C6\u7FA4\uFF0C\u9ED8\u8BA4 "default"
     --default                       \u8BBE\u4E3A\u9ED8\u8BA4 profile
-  profile rm <name>            \u5220\u9664 profile
+  profile rm <name>            \u5220\u9664 profile\uFF08\u8FDE\u540C\u5176\u4F1A\u8BDD\u4E0E\u7528\u6237\u7EA7\u51ED\u636E\uFF09
   profile default <name>       \u8BBE\u4E3A\u9ED8\u8BA4 profile
 
 \u547D\u540D\u7A7A\u95F4:

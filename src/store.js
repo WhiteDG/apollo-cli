@@ -180,6 +180,37 @@ export function removeProfile(name) {
 }
 
 /**
+ * 清除用户级配置中该 profile 的凭据：env 段的 <prefix>USERNAME/PASSWORD 键
+ * 与 profile 对象里手写的 username/password 字段（只动用户级，项目级配置不代为改写）。
+ * 返回实际清除的内容。
+ */
+export function clearUserCredentials(profileName, prefix) {
+  const result = { envKeys: [], profileFields: false };
+  const user = readJSON(USER_CONFIG);
+  if (!user) return result;
+  let changed = false;
+  if (user.env && typeof user.env === 'object') {
+    for (const suffix of ['USERNAME', 'PASSWORD']) {
+      const key = `${prefix}${suffix}`;
+      if (Object.hasOwn(user.env, key)) {
+        delete user.env[key];
+        result.envKeys.push(key);
+        changed = true;
+      }
+    }
+  }
+  const profile = user.profiles?.[profileName];
+  if (profile && (profile.username !== undefined || profile.password !== undefined)) {
+    delete profile.username;
+    delete profile.password;
+    result.profileFields = true;
+    changed = true;
+  }
+  if (changed) writeJSON(USER_CONFIG, user);
+  return result;
+}
+
+/**
  * Set default profile in the file that controls the effective default:
  * project config wins when it declares a default, else user config.
  */

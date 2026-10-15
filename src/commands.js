@@ -1,8 +1,8 @@
 import { loadDotEnv } from './dotenv.js';
 import {
   resolveProfile, getAllProfiles, saveUserConfig, removeProfile,
-  loadSession, saveSession, clearSession, setDefaultProfile,
-  userConfigPath, loadProjectConfig
+  loadSession, saveSession, clearSession, setDefaultProfile, clearUserCredentials,
+  userConfigPath, loadProjectConfig, loadConfig
 } from './store.js';
 import { login as authLogin, ensureSession } from './auth.js';
 import { resolveCredentials, credentialsHint, profileVarPrefix, getEnvVar } from './resolve.js';
@@ -64,7 +64,22 @@ export async function login(profileArg, opts) {
   }
   const cookie = await authLogin(creds, baseUrl);
   saveSession(profileName, { baseUrl, cookie, username: creds.username, savedAt: Date.now() });
-  emit(opts, { profile: profileName, baseUrl, username: creds.username }, `登录成功 (${profileName}: ${baseUrl}) [${creds.username}]`);
+  // flags 传入的凭据仅本次有效，落盘到用户级 env 段，保证会话过期后能自动重登；
+  // 来自 shell/.env/config.json 的凭据已在原处持久化，不复制
+  let configPath = null;
+  if (creds.from === '--flag') {
+    const prefix = profileVarPrefix(profileName);
+    saveUserConfig({ env: { [`${prefix}USERNAME`]: creds.username, [`${prefix}PASSWORD`]: creds.password } }, { mode: 0o600 });
+    configPath = userConfigPath();
+  }
+  const text = `登录成功 (${profileName}: ${baseUrl}) [${creds.username}]` +
+    (configPath ? `\n凭据已保存到用户级配置: ${configPath}` : '');
+  emit(opts, {
+    profile: profileName,
+    baseUrl,
+    username: creds.username,
+    ...(configPath ? { credentialsSaved: true, configPath } : {})
+  }, text);
 }
 
 // ---- logout ----
@@ -72,7 +87,22 @@ export async function login(profileArg, opts) {
 export function logout(profileArg, opts = {}) {
   const ctx = profileCtx(profileArg, opts);
   clearSession(ctx.profileName);
-  emit(opts, { profile: ctx.profileName }, `已清除 ${ctx.profileName} 的登录状态`);
+  const prefix = profileVarPrefix(ctx.profileName);
+  const cleared = clearUserCredentials(ctx.profileName, prefix);
+  const clearedParts = [
+    ...cleared.envKeys,
+    ...(cleared.profileFields ? [`profiles.${ctx.profileName} 手写凭据字段`] : [])
+  ];
+  // 会话与用户级凭据都清掉后，若仍有来源可用（shell/.env、项目配置），如实提示会自动重登
+  const remaining = resolveCredentials(ctx.profileName, {}, loadConfig());
+  const text = `已退出 ${ctx.profileName}：会话已清除` +
+    (clearedParts.length > 0 ? `，用户级凭据已删除（${clearedParts.join('、')}）` : '（用户级配置中无凭据）') +
+    (remaining ? `\n注意：仍有可用凭据（来源: ${remaining.from}），下一条命令会自动重新登录；如需彻底退出请先移除该来源` : '');
+  emit(opts, {
+    profile: ctx.profileName,
+    credentialsCleared: clearedParts.length > 0,
+    credentialsRemaining: !!remaining
+  }, text);
 }
 
 // ---- profile ----
@@ -221,7 +251,19 @@ export function profileRm(name, opts = {}) {
     die(`profile "${name}" 不存在`);
   }
   clearSession(name);
-  emit(opts, { name, removedFrom: scopes }, `profile "${name}" 已删除（从${scopes.join('、')}中移除）`);
+  const prefix = profileVarPrefix(name);
+  // 归一前缀被其他 profile 共用时，env 段凭据仍被对方使用，不能清
+  const shared = Object.keys(getAllProfiles().profiles).some(n => profileVarPrefix(n) === prefix);
+  const cleared = shared ? { envKeys: [], profileFields: false } : clearUserCredentials(name, prefix);
+  const notes = [];
+  if (cleared.envKeys.length > 0) notes.push(`已清除用户级配置中的凭据（${cleared.envKeys.join('、')}）`);
+  if (shared) notes.push(`注意：其他 profile 归一后共用 ${prefix}* 变量，env 段凭据未清除`);
+  emit(opts, {
+    name,
+    removedFrom: scopes,
+    ...(cleared.envKeys.length > 0 ? { clearedCredentials: cleared.envKeys } : {}),
+    ...(shared ? { sharedPrefix: true } : {})
+  }, `profile "${name}" 已删除（从${scopes.join('、')}中移除）` + notes.map(note => `\n${note}`).join(''));
 }
 
 export function profileDefault(name, opts = {}) {

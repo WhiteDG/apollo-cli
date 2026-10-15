@@ -151,6 +151,36 @@ test('profileRm：--json 输出结构化结果', async () => {
   assert.deepEqual(JSON.parse(stdout), { name: 'dev', removedFrom: ['用户配置'] });
 });
 
+test('profileRm：级联清除用户级 env 段凭据', async () => {
+  seedUserConfig(iso.home, {
+    default: 'dev',
+    profiles: { dev: { baseUrl: portal } },
+    env: { APOLLO_DEV_USERNAME: 'u', APOLLO_DEV_PASSWORD: 'p', KEEP: '1' }
+  });
+  const { stdout } = await withOutput(() => commands.profileRm('dev'));
+  assert.equal(
+    stdout,
+    'profile "dev" 已删除（从用户配置中移除）\n已清除用户级配置中的凭据（APOLLO_DEV_USERNAME、APOLLO_DEV_PASSWORD）\n'
+  );
+  const cfg = readJSON(userConfigFile);
+  assert.equal('APOLLO_DEV_USERNAME' in cfg.env, false);
+  assert.equal(cfg.env.KEEP, '1');
+});
+
+test('profileRm：归一前缀被其他 profile 共用时保留凭据并提示', async () => {
+  seedUserConfig(iso.home, {
+    default: 'fat-2',
+    profiles: { 'fat-2': { baseUrl: portal }, 'fat.2': { baseUrl: portal } },
+    env: { APOLLO_FAT_2_USERNAME: 'u', APOLLO_FAT_2_PASSWORD: 'p' }
+  });
+  const { stdout } = await withOutput(() => commands.profileRm('fat-2'));
+  assert.equal(
+    stdout,
+    'profile "fat-2" 已删除（从用户配置中移除）\n注意：其他 profile 归一后共用 APOLLO_FAT_2_* 变量，env 段凭据未清除\n'
+  );
+  assert.equal(readJSON(userConfigFile).env.APOLLO_FAT_2_USERNAME, 'u');
+});
+
 test('profileRm：用户与项目配置同时命中', async () => {
   seedDev();
   const caseDir = iso.caseDir();
@@ -194,21 +224,83 @@ test('profileDefault：--json 输出结构化结果', async () => {
 test('logout：清除指定 profile 登录状态', async () => {
   seedDev();
   const { stdout } = await withOutput(() => commands.logout(null, {}));
-  assert.equal(stdout, '已清除 dev 的登录状态\n');
+  assert.equal(stdout, '已退出 dev：会话已清除（用户级配置中无凭据）\n');
   assert.deepEqual(readJSON(sessionFile), {});
 });
 
 test('logout：--json 输出结构化结果', async () => {
   seedDev();
   const { stdout } = await withOutput(() => commands.logout(null, { json: true }));
-  assert.deepEqual(JSON.parse(stdout), { profile: 'dev' });
+  assert.deepEqual(JSON.parse(stdout), { profile: 'dev', credentialsCleared: false, credentialsRemaining: false });
 });
 
-test('login：--json 输出结构化结果', async t => {
+test('logout：清除用户级 env 段凭据并保留其他键', async () => {
+  seedUserConfig(iso.home, {
+    default: 'dev',
+    profiles: { dev: { baseUrl: portal, portalEnv: 'DEV', cluster: 'default' } },
+    env: { APOLLO_DEV_USERNAME: 'u', APOLLO_DEV_PASSWORD: 'p', KEEP: '1' }
+  });
+  const { stdout } = await withOutput(() => commands.logout(null, {}));
+  assert.equal(stdout, '已退出 dev：会话已清除，用户级凭据已删除（APOLLO_DEV_USERNAME、APOLLO_DEV_PASSWORD）\n');
+  const cfg = readJSON(userConfigFile);
+  assert.equal('APOLLO_DEV_USERNAME' in cfg.env, false);
+  assert.equal('APOLLO_DEV_PASSWORD' in cfg.env, false);
+  assert.equal(cfg.env.KEEP, '1');
+});
+
+test('logout：清除 profile 手写凭据字段，保留其他字段', async () => {
+  seedUserConfig(iso.home, {
+    default: 'dev',
+    profiles: { dev: { baseUrl: portal, portalEnv: 'DEV', username: 'u', password: 'p' } }
+  });
+  const { stdout } = await withOutput(() => commands.logout(null, {}));
+  assert.equal(stdout, '已退出 dev：会话已清除，用户级凭据已删除（profiles.dev 手写凭据字段）\n');
+  const profile = readJSON(userConfigFile).profiles.dev;
+  assert.equal('username' in profile, false);
+  assert.equal('password' in profile, false);
+  assert.equal(profile.baseUrl, portal);
+});
+
+test('logout：shell/.env 凭据仍在时提示会自动重登', async () => {
+  seedDev();
+  const restore = setEnv({ APOLLO_DEV_USERNAME: 'u', APOLLO_DEV_PASSWORD: 'p' });
+  try {
+    const { stdout } = await withOutput(() => commands.logout(null, {}));
+    assert.match(
+      stdout,
+      /^已退出 dev：会话已清除（用户级配置中无凭据）\n注意：仍有可用凭据（来源: APOLLO_DEV_USERNAME），下一条命令会自动重新登录；如需彻底退出请先移除该来源\n$/
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('login：--json 输出结构化结果，flags 凭据落盘用户级配置', async t => {
   seedDev();
   fetchStub(t, (record, idx) => (idx === 0 ? redirectResponse('/apps', ['JSESSIONID=cli']) : jsonResponse([])));
   const { stdout } = await withOutput(() => commands.login(null, { username: 'u', password: 'p', json: true }));
-  assert.deepEqual(JSON.parse(stdout), { profile: 'dev', baseUrl: portal, username: 'u' });
+  const out = JSON.parse(stdout);
+  assert.equal(out.profile, 'dev');
+  assert.equal(out.baseUrl, portal);
+  assert.equal(out.username, 'u');
+  assert.equal(out.credentialsSaved, true);
+  assert.match(out.configPath, /config\.json$/);
+  const cfg = readJSON(userConfigFile);
+  assert.equal(cfg.env.APOLLO_DEV_USERNAME, 'u');
+  assert.equal(cfg.env.APOLLO_DEV_PASSWORD, 'p');
+});
+
+test('login：env 来源凭据登录不复制落盘', async t => {
+  seedDev();
+  const restore = setEnv({ APOLLO_DEV_USERNAME: 'envu', APOLLO_DEV_PASSWORD: 'envp' });
+  try {
+    fetchStub(t, (record, idx) => (idx === 0 ? redirectResponse('/apps', ['JSESSIONID=e']) : jsonResponse([])));
+    const { stdout } = await withOutput(() => commands.login(null, {}));
+    assert.equal(stdout, '登录成功 (dev: http://portal.test) [envu]\n');
+    assert.equal(readJSON(userConfigFile).env, undefined, '不应把环境变量来源的凭据复制进用户级配置');
+  } finally {
+    restore();
+  }
 });
 
 test('login：profile 名含特殊字符时提示与实际读取一致的变量名', async () => {
