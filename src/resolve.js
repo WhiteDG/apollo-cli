@@ -13,6 +13,17 @@ function pair(store, userKey, passKey, from) {
   return store[userKey] && store[passKey] ? { username: store[userKey], password: store[passKey], from } : null;
 }
 
+const warnedDeprecated = new Set();
+
+function warnDeprecatedProfileFields(profileName) {
+  if (warnedDeprecated.has(profileName)) return;
+  warnedDeprecated.add(profileName);
+  process.stderr.write(
+    `警告：config.json 的 profiles.${profileName} 手写凭据字段（username/password）已弃用，` +
+      `请改用 env 段的 ${profileVarName(profileName, 'USERNAME')}/PASSWORD；后续版本将不再读取\n`
+  );
+}
+
 /**
  * 凭据来源注册表：顺序即优先级，第一个命中的来源胜出。
  * - hint：生成统一的「可用凭据来源」提示文案（null 表示不作为完整凭据来源宣传）
@@ -39,10 +50,11 @@ const CREDENTIAL_SOURCES = [
     read: () => pair(process.env, 'APOLLO_USERNAME', 'APOLLO_PASSWORD', 'APOLLO_USERNAME')
   },
   {
-    hint: profileName => `config.json 的 profiles.${profileName} 手写凭据字段`,
+    hint: profileName => `config.json 的 profiles.${profileName} 手写凭据字段（已弃用）`,
     read: (profileName, cliOpts, cfg) => {
       const profile = cfg.profiles?.[profileName];
       if (!profile?.username || !profile?.password) return null;
+      warnDeprecatedProfileFields(profileName);
       return { username: profile.username, password: profile.password, from: `profiles.${profileName}` };
     }
   },

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   setupIsolatedHome,
   assertIsolated,
+  withOutput,
   fetchStub,
   jsonResponse,
   redirectResponse,
@@ -258,7 +259,7 @@ test('ensureSession：config.json profile 字段凭据可自动登录', async t 
   fetchStub(t, (record, idx) =>
     idx === 0 ? redirectResponse('/apps', ['JSESSIONID=cfg']) : jsonResponse([])
   );
-  const cookie = await auth.ensureSession('dev', portal, {});
+  const { result: cookie } = await withOutput(() => auth.ensureSession('dev', portal, {}));
   assert.equal(cookie, 'NG_TRANSLATE_LANG_KEY=zh-CN; JSESSIONID=cfg');
   const session = JSON.parse(readFileSync(join(iso.home, '.apollo-cli', 'session.json'), 'utf8'));
   assert.equal(session.dev.username, 'cfgu');
@@ -314,7 +315,7 @@ test('reLogin：config.json 凭据可重新登录并透传密码', async t => {
   const calls = fetchStub(t, (record, idx) =>
     idx === 0 ? redirectResponse('/apps', ['JSESSIONID=relogcfg']) : jsonResponse([])
   );
-  const result = await auth.reLogin('dev', portal);
+  const { result } = await withOutput(() => auth.reLogin('dev', portal));
   assert.equal(result.cookie, 'NG_TRANSLATE_LANG_KEY=zh-CN; JSESSIONID=relogcfg');
   assert.equal(calls[0].body.toString(), 'username=cfgu&password=cfgp&login-submit=%E7%99%BB%E5%BD%95');
 });
@@ -324,7 +325,7 @@ test('reLogin：config.json 凭据登录失败时返回 {error} 说明凭据已�
     profiles: { dev: { baseUrl: portal, username: 'cfgu', password: 'cfgp' } }
   });
   fetchStub(t, () => jsonResponse({}, 200));
-  const result = await auth.reLogin('dev', portal);
+  const { result } = await withOutput(() => auth.reLogin('dev', portal));
   assert.deepEqual(result, { error: '登录失败：Portal 返回 HTTP 200（http://portal.test）' });
 });
 

@@ -7625,6 +7625,15 @@ function profileVarName(profileName, suffix) {
 function pair(store, userKey, passKey, from) {
   return store[userKey] && store[passKey] ? { username: store[userKey], password: store[passKey], from } : null;
 }
+var warnedDeprecated = /* @__PURE__ */ new Set();
+function warnDeprecatedProfileFields(profileName) {
+  if (warnedDeprecated.has(profileName)) return;
+  warnedDeprecated.add(profileName);
+  process.stderr.write(
+    `\u8B66\u544A\uFF1Aconfig.json \u7684 profiles.${profileName} \u624B\u5199\u51ED\u636E\u5B57\u6BB5\uFF08username/password\uFF09\u5DF2\u5F03\u7528\uFF0C\u8BF7\u6539\u7528 env \u6BB5\u7684 ${profileVarName(profileName, "USERNAME")}/PASSWORD\uFF1B\u540E\u7EED\u7248\u672C\u5C06\u4E0D\u518D\u8BFB\u53D6
+`
+  );
+}
 var CREDENTIAL_SOURCES = [
   {
     hint: "--username/--password",
@@ -7642,10 +7651,11 @@ var CREDENTIAL_SOURCES = [
     read: () => pair(process.env, "APOLLO_USERNAME", "APOLLO_PASSWORD", "APOLLO_USERNAME")
   },
   {
-    hint: (profileName) => `config.json \u7684 profiles.${profileName} \u624B\u5199\u51ED\u636E\u5B57\u6BB5`,
+    hint: (profileName) => `config.json \u7684 profiles.${profileName} \u624B\u5199\u51ED\u636E\u5B57\u6BB5\uFF08\u5DF2\u5F03\u7528\uFF09`,
     read: (profileName, cliOpts, cfg) => {
       const profile = cfg.profiles?.[profileName];
       if (!profile?.username || !profile?.password) return null;
+      warnDeprecatedProfileFields(profileName);
       return { username: profile.username, password: profile.password, from: `profiles.${profileName}` };
     }
   },

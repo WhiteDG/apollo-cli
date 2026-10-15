@@ -72,7 +72,7 @@ apollo-cli profile add fat --base-url http://portal.example.com:8070 --default
 - `--cluster`：集群名称，默认 `default`
 - `--default`：设为默认 profile
 
-profile 定义里还支持可选的手写字段：`username`/`password`（凭据，见「配置凭据」方式五）。`profile add` 只覆盖 `baseUrl`/`portalEnv`/`cluster`，手写字段会保留。
+profile 定义里还支持可选的手写字段 `username`/`password`，但**已弃用**：读取时会在 stderr 输出弃用警告，后续版本将不再读取，请改用「配置凭据」的 env 段或 shell/.env。`profile add` 只覆盖 `baseUrl`/`portalEnv`/`cluster`，手写字段会保留（兼容期内）。
 
 `profile rm <name>` 删除 profile 时会连同清除其会话与用户级配置中的凭据（env 段键与手写字段）；若该 profile 的变量前缀被其他 profile 共用（如 `fat-2` 与 `fat.2` 都归一到 `APOLLO_FAT_2_`），env 段凭据会保留并提示。
 
@@ -109,13 +109,13 @@ cp .env.example .env   # 然后填入真实凭据
 // 注意：这里的 env 指环境变量，与 profile 的 portalEnv（Apollo 环境名）无关。
 { "env": { "APOLLO_FAT_USERNAME": "myuser", "APOLLO_FAT_PASSWORD": "mypass" } }
 
-// 方式五：profile 内直接写（只作用于该 profile；profile 里仍可继续手写其它字段）
-{ "profiles": { "fat": { "baseUrl": "http://portal.example.com:8070", "username": "myuser", "password": "mypass" } } }
+// （旧版方式五：在 profile 里手写 username/password。已弃用——读取时会输出弃用警告，
+//  后续版本将不再读取，请改用方式四。）
 ```
 
-搜索顺序（高 → 低）：`--username/--password`（两者同时传入时优先）→ shell/.env 的 `APOLLO_<PROFILE>_USERNAME/PASSWORD` → shell/.env 的全局 `APOLLO_USERNAME/PASSWORD` → config.json profile 的 `username/password` 字段 → config.json `env` 段的 `APOLLO_<PROFILE>_USERNAME/PASSWORD` → config.json `env` 段的全局变量。即 shell 环境变量优先于 `.env`，两者都优先于 config.json；config.json 内 profile 字段优先于 `env` 段。只传 `--password`（不带 `--username`）时该 flag 会被忽略，继续按上述顺序回退。
+搜索顺序（高 → 低）：`--username/--password`（两者同时传入时优先）→ shell/.env 的 `APOLLO_<PROFILE>_USERNAME/PASSWORD` → shell/.env 的全局 `APOLLO_USERNAME/PASSWORD` → config.json profile 的 `username/password` 字段（已弃用，读取时警告）→ config.json `env` 段的 `APOLLO_<PROFILE>_USERNAME/PASSWORD` → config.json `env` 段的全局变量。即 shell 环境变量优先于 `.env`，两者都优先于 config.json；config.json 内 profile 字段优先于 `env` 段。只传 `--password`（不带 `--username`）时该 flag 会被忽略，继续按上述顺序回退。
 
-> 安全提示：项目级 `apollo-cli.config.json` 常被提交到 git，不要把真实密码写进去；共享账号建议放用户级 `~/.apollo-cli/config.json` 或用 `.env`（记得 gitignore）。另外项目级与用户级出现**同名 profile** 时，项目级会整体替换用户级（不是字段合并），用户级手写的凭据会随之消失——凭据建议统一放用户级，或用 `env` 段（`env` 段按变量名合并，不会整体覆盖）。`profile add` 重跑时只覆盖 `baseUrl`/`portalEnv`/`cluster`，profile 里手写的 `username`/`password` 会保留。
+> 安全提示：项目级 `apollo-cli.config.json` 常被提交到 git，不要把真实密码写进去；共享账号建议放用户级 `~/.apollo-cli/config.json` 或用 `.env`（记得 gitignore）。另外项目级与用户级出现**同名 profile** 时，项目级会整体替换用户级（不是字段合并），用户级手写的 `username`/`password` 会随之消失——凭据建议统一放 `env` 段（`env` 段按变量名合并，不会整体覆盖）。`profile add` 重跑时只覆盖 `baseUrl`/`portalEnv`/`cluster`，profile 里手写的 `username`/`password` 会保留（兼容期内）。
 
 ### 3. 登录
 
