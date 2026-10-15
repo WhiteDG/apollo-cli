@@ -14,6 +14,7 @@ function ensureDir(path) {
 const warnedPaths = new Set();
 
 function readJSON(path, { lenient = false } = {}) {
+  checkCredentialFilePerms(path);
   let text;
   try {
     text = readFileSync(path, 'utf8');
@@ -37,9 +38,25 @@ function readJSON(path, { lenient = false } = {}) {
 }
 
 function warnOnce(path, msg) {
-  if (warnedPaths.has(path)) return;
-  warnedPaths.add(path);
+  // 按「路径 + 文案」去重：同一文件的不同警告（如权限过宽与内容损坏）互不吞没
+  const key = `${path}\u0000${msg}`;
+  if (warnedPaths.has(key)) return;
+  warnedPaths.add(key);
   process.stderr.write(msg + '\n');
+}
+
+// POSIX 下凭据文件权限过宽（group/other 可读）时警告；Windows 无 POSIX 权限位，依赖用户目录 ACL
+function checkCredentialFilePerms(path) {
+  if (process.platform === 'win32') return;
+  if (path !== USER_CONFIG && path !== SESSION_FILE) return;
+  try {
+    const mode = statSync(path).mode & 0o777;
+    if (mode & 0o077) {
+      warnOnce(path, `警告：${path} 权限为 ${mode.toString(8).padStart(3, '0')}，其中可能含凭据，建议执行 chmod 600 ${path}`);
+    }
+  } catch {
+    // 文件不存在等场景交给后续 readFileSync 统一处理
+  }
 }
 
 function atomicWrite(path, content, options = 'utf8') {

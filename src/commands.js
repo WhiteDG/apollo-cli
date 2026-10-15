@@ -51,6 +51,15 @@ function profileCtx(hint, opts = {}) {
   };
 }
 
+/** 归一前缀冲突拦截：两个 profile 名归一后共用同一组 APOLLO_<P>_* 变量，凭据会相互覆盖 */
+function assertPrefixFree(name, profiles) {
+  const prefix = profileVarPrefix(name);
+  const clash = Object.keys(profiles).find(n => n !== name && profileVarPrefix(n) === prefix);
+  if (clash) {
+    die(`profile 名 "${name}" 与已有 profile "${clash}" 归一后共用环境变量前缀 ${prefix}，凭据会相互覆盖。请改用其他名字，或先执行 "apollo-cli profile rm ${clash}" 删除冲突的 profile`);
+  }
+}
+
 // ---- login ----
 
 export async function login(profileArg, opts) {
@@ -140,7 +149,9 @@ export function profileAdd(name, vals) {
     portalEnv,
     cluster: vals.cluster || 'default'
   };
-  if (vals.default) getAllProfiles(); // 预检：配置文件损坏在此抛错，避免"profile 已写、默认未设"的半写入
+  // 预检：配置文件损坏在此抛错，避免半写入；同时拦截归一前缀冲突
+  const { profiles } = getAllProfiles();
+  assertPrefixFree(name, profiles);
   saveUserConfig({ profiles: { [name]: data } });
   let def = null;
   if (vals.default) def = setDefaultProfile(name);
@@ -167,7 +178,7 @@ async function askField(prompt, question, { hidden = false } = {}) {
   }
 }
 
-// 提示会让刚写入的值不生效的情形：项目级同名 profile 优先、shell 变量遮蔽、归一前缀冲突
+// 提示会让刚写入的值不生效的情形：项目级同名 profile 优先、shell 变量遮蔽
 function warnSetupPitfalls(name, prefix) {
   const project = loadProjectConfig();
   if (project?.profiles?.[name]) {
@@ -175,10 +186,6 @@ function warnSetupPitfalls(name, prefix) {
   }
   if (process.env[`${prefix}USERNAME`] || process.env[`${prefix}PASSWORD`]) {
     process.stderr.write(`提示：shell 环境变量 ${prefix}USERNAME/PASSWORD 已设置，优先于本次写入的配置生效\n`);
-  }
-  const others = Object.keys(getAllProfiles().profiles).filter(n => n !== name);
-  if (others.some(n => profileVarPrefix(n) === prefix)) {
-    process.stderr.write(`提示：profile 名 "${name}" 与已有 profile 归一后共用同一组环境变量（${prefix}*），凭据会相互覆盖\n`);
   }
 }
 
@@ -206,6 +213,7 @@ export async function profileSetup(nameArg, vals, prompt = createPrompter()) {
   const password = vals.password || await askField(prompt, 'Portal 密码（隐藏输入，输完回车）: ', { hidden: true });
 
   const { profiles } = getAllProfiles(); // 预检配置可解析，并据此判断是否首次配置
+  assertPrefixFree(finalName, profiles);
   const existing = profiles[finalName];
   const portalEnv = vals['portal-env'] || existing?.portalEnv || finalName.toUpperCase();
   const cluster = vals.cluster || existing?.cluster || 'default';

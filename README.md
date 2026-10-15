@@ -76,6 +76,8 @@ profile 定义里还支持可选的手写字段 `username`/`password`，但**已
 
 `profile rm <name>` 删除 profile 时会连同清除其会话与用户级配置中的凭据（env 段键与手写字段）；若该 profile 的变量前缀被其他 profile 共用（如 `fat-2` 与 `fat.2` 都归一到 `APOLLO_FAT_2_`），env 段凭据会保留并提示。
 
+新增 profile（`profile add`/`setup`）时，若名字与已有 profile 归一后共用同一前缀（如 `fat-2` 与 `fat.2`），会直接报错并要求改名或先删除冲突项，避免凭据互串。
+
 ### 2. 配置凭据
 
 最省事的方式是用 `apollo-cli setup` 一条命令写入（存的即下方「方式四」的 env 段）；以下是手动配置方式。
@@ -116,6 +118,8 @@ cp .env.example .env   # 然后填入真实凭据
 搜索顺序（高 → 低）：`--username/--password`（两者同时传入时优先）→ shell/.env 的 `APOLLO_<PROFILE>_USERNAME/PASSWORD` → shell/.env 的全局 `APOLLO_USERNAME/PASSWORD` → config.json profile 的 `username/password` 字段（已弃用，读取时警告）→ config.json `env` 段的 `APOLLO_<PROFILE>_USERNAME/PASSWORD` → config.json `env` 段的全局变量。即 shell 环境变量优先于 `.env`，两者都优先于 config.json；config.json 内 profile 字段优先于 `env` 段。只传 `--password`（不带 `--username`）时该 flag 会被忽略，继续按上述顺序回退。
 
 > 安全提示：项目级 `apollo-cli.config.json` 常被提交到 git，不要把真实密码写进去；共享账号建议放用户级 `~/.apollo-cli/config.json` 或用 `.env`（记得 gitignore）。另外项目级与用户级出现**同名 profile** 时，项目级会整体替换用户级（不是字段合并），用户级手写的 `username`/`password` 会随之消失——凭据建议统一放 `env` 段（`env` 段按变量名合并，不会整体覆盖）。`profile add` 重跑时只覆盖 `baseUrl`/`portalEnv`/`cluster`，profile 里手写的 `username`/`password` 会保留（兼容期内）。
+
+> 凭据文件权限：写入凭据的 `setup`/`login` 会以 0600 原子落盘 `~/.apollo-cli/config.json`，`session.json` 同样 0600；POSIX 系统读取时若发现权限过宽会输出警告（可用 chmod 600 修复）。Windows 没有 POSIX 权限位，这两个文件依赖用户目录 ACL 保护，请确保 `~/.apollo-cli` 仅本人可访问。
 
 ### 3. 登录
 

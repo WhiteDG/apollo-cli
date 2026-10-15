@@ -7397,6 +7397,7 @@ function ensureDir(path) {
 }
 var warnedPaths = /* @__PURE__ */ new Set();
 function readJSON(path, { lenient = false } = {}) {
+  checkCredentialFilePerms(path);
   let text;
   try {
     text = (0, import_node_fs2.readFileSync)(path, "utf8");
@@ -7420,9 +7421,21 @@ function readJSON(path, { lenient = false } = {}) {
   }
 }
 function warnOnce(path, msg) {
-  if (warnedPaths.has(path)) return;
-  warnedPaths.add(path);
+  const key = `${path}\0${msg}`;
+  if (warnedPaths.has(key)) return;
+  warnedPaths.add(key);
   process.stderr.write(msg + "\n");
+}
+function checkCredentialFilePerms(path) {
+  if (process.platform === "win32") return;
+  if (path !== USER_CONFIG && path !== SESSION_FILE) return;
+  try {
+    const mode = (0, import_node_fs2.statSync)(path).mode & 511;
+    if (mode & 63) {
+      warnOnce(path, `\u8B66\u544A\uFF1A${path} \u6743\u9650\u4E3A ${mode.toString(8).padStart(3, "0")}\uFF0C\u5176\u4E2D\u53EF\u80FD\u542B\u51ED\u636E\uFF0C\u5EFA\u8BAE\u6267\u884C chmod 600 ${path}`);
+    }
+  } catch {
+  }
 }
 function atomicWrite(path, content, options = "utf8") {
   cleanStaleTmp(path);
@@ -8417,6 +8430,13 @@ function profileCtx(hint, opts = {}) {
     config
   };
 }
+function assertPrefixFree(name, profiles) {
+  const prefix = profileVarPrefix(name);
+  const clash = Object.keys(profiles).find((n) => n !== name && profileVarPrefix(n) === prefix);
+  if (clash) {
+    die(`profile \u540D "${name}" \u4E0E\u5DF2\u6709 profile "${clash}" \u5F52\u4E00\u540E\u5171\u7528\u73AF\u5883\u53D8\u91CF\u524D\u7F00 ${prefix}\uFF0C\u51ED\u636E\u4F1A\u76F8\u4E92\u8986\u76D6\u3002\u8BF7\u6539\u7528\u5176\u4ED6\u540D\u5B57\uFF0C\u6216\u5148\u6267\u884C "apollo-cli profile rm ${clash}" \u5220\u9664\u51B2\u7A81\u7684 profile`);
+  }
+}
 async function login2(profileArg, opts) {
   loadDotEnv();
   const name = profileArg || pickProfile(opts) || null;
@@ -8496,7 +8516,8 @@ function profileAdd(name, vals) {
     portalEnv,
     cluster: vals.cluster || "default"
   };
-  if (vals.default) getAllProfiles();
+  const { profiles } = getAllProfiles();
+  assertPrefixFree(name, profiles);
   saveUserConfig({ profiles: { [name]: data } });
   let def = null;
   if (vals.default) def = setDefaultProfile(name);
@@ -8529,11 +8550,6 @@ function warnSetupPitfalls(name, prefix) {
     process.stderr.write(`\u63D0\u793A\uFF1Ashell \u73AF\u5883\u53D8\u91CF ${prefix}USERNAME/PASSWORD \u5DF2\u8BBE\u7F6E\uFF0C\u4F18\u5148\u4E8E\u672C\u6B21\u5199\u5165\u7684\u914D\u7F6E\u751F\u6548
 `);
   }
-  const others = Object.keys(getAllProfiles().profiles).filter((n) => n !== name);
-  if (others.some((n) => profileVarPrefix(n) === prefix)) {
-    process.stderr.write(`\u63D0\u793A\uFF1Aprofile \u540D "${name}" \u4E0E\u5DF2\u6709 profile \u5F52\u4E00\u540E\u5171\u7528\u540C\u4E00\u7EC4\u73AF\u5883\u53D8\u91CF\uFF08${prefix}*\uFF09\uFF0C\u51ED\u636E\u4F1A\u76F8\u4E92\u8986\u76D6
-`);
-  }
 }
 async function profileSetup(nameArg, vals, prompt = createPrompter()) {
   const name = (nameArg || vals.profile || "").trim() || null;
@@ -8553,6 +8569,7 @@ async function profileSetup(nameArg, vals, prompt = createPrompter()) {
   const username = (vals.username || await askField(prompt, "Portal \u8D26\u53F7: ")).trim();
   const password = vals.password || await askField(prompt, "Portal \u5BC6\u7801\uFF08\u9690\u85CF\u8F93\u5165\uFF0C\u8F93\u5B8C\u56DE\u8F66\uFF09: ", { hidden: true });
   const { profiles } = getAllProfiles();
+  assertPrefixFree(finalName, profiles);
   const existing = profiles[finalName];
   const portalEnv = vals["portal-env"] || existing?.portalEnv || finalName.toUpperCase();
   const cluster = vals.cluster || existing?.cluster || "default";

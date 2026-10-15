@@ -28,7 +28,7 @@ function readJSON(file) {
 }
 
 function okLoginStub(t) {
-  fetchStub(t, (record, idx) => (idx === 0 ? redirectResponse('/apps', ['JSESSIONID=cli']) : jsonResponse([])));
+  return fetchStub(t, (record, idx) => (idx === 0 ? redirectResponse('/apps', ['JSESSIONID=cli']) : jsonResponse([])));
 }
 
 function fakePrompter(answers) {
@@ -192,9 +192,15 @@ test('setup：提示项目级同名覆盖与 shell 变量遮蔽', async t => {
   }
 });
 
-test('setup：归一前缀冲突时提示共用环境变量', async t => {
+test('setup：归一前缀冲突时报错且不写任何配置', async t => {
   seedUserConfig(iso.home, { profiles: { 'fat.2': { baseUrl: 'http://x' } } });
-  okLoginStub(t);
-  const { stderr } = await withOutput(() => commands.profileSetup('fat-2', baseVals()));
-  assert.match(stderr, /共用同一组环境变量（APOLLO_FAT_2_\*）/);
+  const calls = okLoginStub(t);
+  await assert.rejects(
+    withOutput(() => commands.profileSetup('fat-2', baseVals())),
+    /归一后共用环境变量前缀 APOLLO_FAT_2_/
+  );
+  assert.equal(calls.length, 0, '冲突应在登录请求前拦截');
+  const cfg = readJSON(configFile);
+  assert.equal('fat-2' in cfg.profiles, false);
+  assert.equal(existsSync(sessionFile), false);
 });

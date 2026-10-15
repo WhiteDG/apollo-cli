@@ -133,6 +133,15 @@ test('profileAdd：配置文件损坏时预检抛错且不写入', async () => {
   assert.equal(readFileSync(userConfigFile, 'utf8'), '{broken');
 });
 
+test('profileAdd：归一前缀冲突时报错且不写入', async () => {
+  seedUserConfig(iso.home, { profiles: { 'fat.2': { baseUrl: 'http://x' } } });
+  await assert.rejects(
+    withOutput(() => commands.profileAdd('fat-2', { 'base-url': 'http://p' })),
+    /归一后共用环境变量前缀 APOLLO_FAT_2_/
+  );
+  assert.deepEqual(Object.keys(readJSON(userConfigFile).profiles), ['fat.2']);
+});
+
 test('profileRm：profile 不存在时报错', async () => {
   await assert.rejects(withOutput(() => commands.profileRm('ghost')), /profile "ghost" 不存在/);
 });
