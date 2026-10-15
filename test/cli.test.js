@@ -455,7 +455,8 @@ test('cli：login 有 profile 但无凭据时报未找到凭据', async () => {
     profiles: { dev: { baseUrl: portal, portalEnv: 'DEV' } }
   });
   const res = await runCli(['login', 'dev']);
-  assert.match(res.stderr, /未找到凭据。请设置环境变量 APOLLO_DEV_USERNAME\/PASSWORD/);
+  assert.match(res.stderr, /未找到凭据。可用凭据来源（优先级从高到低）：/);
+  assert.match(res.stderr, /APOLLO_DEV_USERNAME\/PASSWORD/);
   assert.equal(res.exitCode, 1);
 });
 

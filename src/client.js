@@ -1,4 +1,5 @@
-import { reLogin, profileVarPrefix } from './auth.js';
+import { reLogin } from './auth.js';
+import { credentialsHint } from './resolve.js';
 import { fetchWithTimeout, netError } from './http.js';
 
 export async function portalRequest(method, pathname, opts = {}) {
@@ -34,7 +35,7 @@ export async function portalRequest(method, pathname, opts = {}) {
       resp = await doFetch(relogin.cookie);
     } else {
       const reason = relogin?.error ? `，自动重新登录失败：${relogin.error}` : '，且未找到可用凭据';
-      throw new Error(`登录已过期${reason}。请执行 "apollo-cli login ${profileName}" 或配置 ${profileVarPrefix(profileName)}USERNAME/PASSWORD（也可在 config.json 中配置）`);
+      throw new Error(`登录已过期${reason}。请执行 "apollo-cli login ${profileName}"。${credentialsHint(profileName)}`);
     }
   }
 

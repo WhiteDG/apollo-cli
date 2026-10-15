@@ -1839,8 +1839,8 @@ var require_Pair = __commonJS({
         return new _Pair(key, value);
       }
       toJSON(_, ctx) {
-        const pair = ctx?.mapAsMap ? /* @__PURE__ */ new Map() : {};
-        return addPairToJSMap.addPairToJSMap(ctx, pair, this);
+        const pair2 = ctx?.mapAsMap ? /* @__PURE__ */ new Map() : {};
+        return addPairToJSMap.addPairToJSMap(ctx, pair2, this);
       }
       toString(ctx, onComment, onChompKeep) {
         return ctx?.doc ? stringifyPair.stringifyPair(this, ctx, onComment, onChompKeep) : JSON.stringify(this);
@@ -2065,14 +2065,14 @@ var require_YAMLMap = __commonJS({
        * @param overwrite - If not set `true`, using a key that is already in the
        *   collection will throw. Otherwise, overwrites the previous value.
        */
-      add(pair, overwrite) {
+      add(pair2, overwrite) {
         let _pair;
-        if (identity.isPair(pair))
-          _pair = pair;
-        else if (!pair || typeof pair !== "object" || !("key" in pair)) {
-          _pair = new Pair.Pair(pair, pair?.value);
+        if (identity.isPair(pair2))
+          _pair = pair2;
+        else if (!pair2 || typeof pair2 !== "object" || !("key" in pair2)) {
+          _pair = new Pair.Pair(pair2, pair2?.value);
         } else
-          _pair = new Pair.Pair(pair.key, pair.value);
+          _pair = new Pair.Pair(pair2.key, pair2.value);
         const prev = findPair(this.items, _pair.key);
         const sortEntries = this.schema?.sortMapEntries;
         if (prev) {
@@ -2663,16 +2663,16 @@ var require_pairs = __commonJS({
           else if (identity.isMap(item)) {
             if (item.items.length > 1)
               onError("Each pair must have its own sequence indicator");
-            const pair = item.items[0] || new Pair.Pair(new Scalar.Scalar(null));
+            const pair2 = item.items[0] || new Pair.Pair(new Scalar.Scalar(null));
             if (item.commentBefore)
-              pair.key.commentBefore = pair.key.commentBefore ? `${item.commentBefore}
-${pair.key.commentBefore}` : item.commentBefore;
+              pair2.key.commentBefore = pair2.key.commentBefore ? `${item.commentBefore}
+${pair2.key.commentBefore}` : item.commentBefore;
             if (item.comment) {
-              const cn = pair.value ?? pair.key;
+              const cn = pair2.value ?? pair2.key;
               cn.comment = cn.comment ? `${item.comment}
 ${cn.comment}` : item.comment;
             }
-            item = pair;
+            item = pair2;
           }
           seq.items[i] = identity.isPair(item) ? item : new Pair.Pair(item);
         }
@@ -2753,13 +2753,13 @@ var require_omap = __commonJS({
         const map = /* @__PURE__ */ new Map();
         if (ctx?.onCreate)
           ctx.onCreate(map);
-        for (const pair of this.items) {
+        for (const pair2 of this.items) {
           let key, value;
-          if (identity.isPair(pair)) {
-            key = toJS.toJS(pair.key, "", ctx);
-            value = toJS.toJS(pair.value, key, ctx);
+          if (identity.isPair(pair2)) {
+            key = toJS.toJS(pair2.key, "", ctx);
+            value = toJS.toJS(pair2.value, key, ctx);
           } else {
-            key = toJS.toJS(pair, "", ctx);
+            key = toJS.toJS(pair2, "", ctx);
           }
           if (map.has(key))
             throw new Error("Ordered maps must not include duplicate keys");
@@ -2975,24 +2975,24 @@ var require_set = __commonJS({
         this.tag = _YAMLSet.tag;
       }
       add(key) {
-        let pair;
+        let pair2;
         if (identity.isPair(key))
-          pair = key;
+          pair2 = key;
         else if (key && typeof key === "object" && "key" in key && "value" in key && key.value === null)
-          pair = new Pair.Pair(key.key, null);
+          pair2 = new Pair.Pair(key.key, null);
         else
-          pair = new Pair.Pair(key, null);
-        const prev = YAMLMap.findPair(this.items, pair.key);
+          pair2 = new Pair.Pair(key, null);
+        const prev = YAMLMap.findPair(this.items, pair2.key);
         if (!prev)
-          this.items.push(pair);
+          this.items.push(pair2);
       }
       /**
        * If `keepPair` is `true`, returns the Pair matching `key`.
        * Otherwise, returns the value of that Pair's key.
        */
       get(key, keepPair) {
-        const pair = YAMLMap.findPair(this.items, key);
-        return !keepPair && identity.isPair(pair) ? identity.isScalar(pair.key) ? pair.key.value : pair.key : pair;
+        const pair2 = YAMLMap.findPair(this.items, key);
+        return !keepPair && identity.isPair(pair2) ? identity.isScalar(pair2.key) ? pair2.key.value : pair2.key : pair2;
       }
       set(key, value) {
         if (typeof value !== "boolean")
@@ -3967,7 +3967,7 @@ var require_util_map_includes = __commonJS({
       if (uniqueKeys === false)
         return false;
       const isEqual = typeof uniqueKeys === "function" ? uniqueKeys : (a, b) => a === b || identity.isScalar(a) && identity.isScalar(b) && a.value === b.value;
-      return items.some((pair) => isEqual(pair.key, search));
+      return items.some((pair2) => isEqual(pair2.key, search));
     }
     exports2.mapIncludes = mapIncludes;
   }
@@ -4053,10 +4053,10 @@ var require_resolve_block_map = __commonJS({
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
-          const pair = new Pair.Pair(keyNode, valueNode);
+          const pair2 = new Pair.Pair(keyNode, valueNode);
           if (ctx.options.keepSourceTokens)
-            pair.srcToken = collItem;
-          map.items.push(pair);
+            pair2.srcToken = collItem;
+          map.items.push(pair2);
         } else {
           if (implicitKey)
             onError(keyNode.range, "MISSING_CHAR", "Implicit map keys need to be followed by map values");
@@ -4066,10 +4066,10 @@ var require_resolve_block_map = __commonJS({
             else
               keyNode.comment = valueProps.comment;
           }
-          const pair = new Pair.Pair(keyNode);
+          const pair2 = new Pair.Pair(keyNode);
           if (ctx.options.keepSourceTokens)
-            pair.srcToken = collItem;
-          map.items.push(pair);
+            pair2.srcToken = collItem;
+          map.items.push(pair2);
         }
       }
       if (commentEnd && commentEnd < offset)
@@ -4320,18 +4320,18 @@ var require_resolve_flow_collection = __commonJS({
             else
               keyNode.comment = valueProps.comment;
           }
-          const pair = new Pair.Pair(keyNode, valueNode);
+          const pair2 = new Pair.Pair(keyNode, valueNode);
           if (ctx.options.keepSourceTokens)
-            pair.srcToken = collItem;
+            pair2.srcToken = collItem;
           if (isMap2) {
             const map = coll;
             if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
               onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-            map.items.push(pair);
+            map.items.push(pair2);
           } else {
             const map = new YAMLMap.YAMLMap(ctx.schema);
             map.flow = true;
-            map.items.push(pair);
+            map.items.push(pair2);
             const endRange = (valueNode ?? keyNode).range;
             map.range = [keyNode.range[0], endRange[1], endRange[2]];
             coll.items.push(map);
@@ -7483,10 +7483,6 @@ function loadConfig() {
   }
   return result;
 }
-function getEnvVar(name) {
-  if (process.env[name]) return process.env[name];
-  return loadConfig().env[name] || null;
-}
 function resolveProfile(profileName) {
   const config = loadConfig();
   const profiles = config.profiles;
@@ -7594,41 +7590,76 @@ function netError(e, target) {
   return `\u65E0\u6CD5\u8FDE\u63A5 ${target}${cause ? `\uFF08${cause}\uFF09` : ""}`;
 }
 
-// src/auth.js
+// src/resolve.js
 function profileVarPrefix(profileName) {
   return `APOLLO_${profileName.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase()}_`;
 }
 function profileVarName(profileName, suffix) {
   return profileVarPrefix(profileName) + suffix;
 }
-function resolveCredentials(profileName, cliOpts, cfg = {}) {
-  if (cliOpts.username && cliOpts.password) {
-    return { username: cliOpts.username, password: cliOpts.password, from: "--flag" };
+function pair(store, userKey, passKey, from) {
+  return store[userKey] && store[passKey] ? { username: store[userKey], password: store[passKey], from } : null;
+}
+var CREDENTIAL_SOURCES = [
+  {
+    hint: "--username/--password",
+    read: (profileName, cliOpts) => cliOpts.username && cliOpts.password ? { username: cliOpts.username, password: cliOpts.password, from: "--flag" } : null
+  },
+  {
+    hint: (profileName) => `\u73AF\u5883\u53D8\u91CF ${profileVarName(profileName, "USERNAME")}/PASSWORD`,
+    read: (profileName) => {
+      const userKey = profileVarName(profileName, "USERNAME");
+      return pair(process.env, userKey, profileVarName(profileName, "PASSWORD"), userKey);
+    }
+  },
+  {
+    hint: "\u73AF\u5883\u53D8\u91CF APOLLO_USERNAME/PASSWORD",
+    read: () => pair(process.env, "APOLLO_USERNAME", "APOLLO_PASSWORD", "APOLLO_USERNAME")
+  },
+  {
+    hint: (profileName) => `config.json \u7684 profiles.${profileName} \u624B\u5199\u51ED\u636E\u5B57\u6BB5`,
+    read: (profileName, cliOpts, cfg) => {
+      const profile = cfg.profiles?.[profileName];
+      if (!profile?.username || !profile?.password) return null;
+      return { username: profile.username, password: profile.password, from: `profiles.${profileName}` };
+    }
+  },
+  {
+    hint: (profileName) => `config.json env \u6BB5\u7684 ${profileVarName(profileName, "USERNAME")}/PASSWORD`,
+    read: (profileName, cliOpts, cfg) => {
+      const userKey = profileVarName(profileName, "USERNAME");
+      return pair(cfg.env || {}, userKey, profileVarName(profileName, "PASSWORD"), `${userKey} (config.json)`);
+    }
+  },
+  {
+    hint: "config.json env \u6BB5\u7684 APOLLO_USERNAME/APOLLO_PASSWORD",
+    read: (profileName, cliOpts, cfg) => pair(cfg.env || {}, "APOLLO_USERNAME", "APOLLO_PASSWORD", "APOLLO_USERNAME (config.json)")
+  },
+  {
+    // 仅用户名不足以完成登录，不列入提示；password 置空串，交给登录失败路径报错（现状保留）
+    hint: null,
+    read: (profileName, cliOpts) => cliOpts.username ? { username: cliOpts.username, password: cliOpts.password || "", from: "--username" } : null
   }
-  const perProfileUser = profileVarName(profileName, "USERNAME");
-  const perProfilePass = profileVarName(profileName, "PASSWORD");
-  if (process.env[perProfileUser] && process.env[perProfilePass]) {
-    return { username: process.env[perProfileUser], password: process.env[perProfilePass], from: perProfileUser };
-  }
-  if (process.env.APOLLO_USERNAME && process.env.APOLLO_PASSWORD) {
-    return { username: process.env.APOLLO_USERNAME, password: process.env.APOLLO_PASSWORD, from: "APOLLO_USERNAME" };
-  }
-  const profile = cfg.profiles?.[profileName];
-  if (profile?.username && profile?.password) {
-    return { username: profile.username, password: profile.password, from: `profiles.${profileName}` };
-  }
-  const cfgEnv = cfg.env || {};
-  if (cfgEnv[perProfileUser] && cfgEnv[perProfilePass]) {
-    return { username: cfgEnv[perProfileUser], password: cfgEnv[perProfilePass], from: `${perProfileUser} (config.json)` };
-  }
-  if (cfgEnv.APOLLO_USERNAME && cfgEnv.APOLLO_PASSWORD) {
-    return { username: cfgEnv.APOLLO_USERNAME, password: cfgEnv.APOLLO_PASSWORD, from: "APOLLO_USERNAME (config.json)" };
-  }
-  if (cliOpts.username) {
-    return { username: cliOpts.username, password: cliOpts.password || "", from: "--username" };
+];
+function resolveCredentials(profileName, cliOpts = {}, cfg = {}) {
+  for (const source of CREDENTIAL_SOURCES) {
+    const hit = source.read(profileName, cliOpts, cfg);
+    if (hit) return hit;
   }
   return null;
 }
+function credentialsHint(profileName) {
+  const ways = CREDENTIAL_SOURCES.filter((source) => source.hint).map(
+    (source) => typeof source.hint === "function" ? source.hint(profileName) : source.hint
+  );
+  return `\u53EF\u7528\u51ED\u636E\u6765\u6E90\uFF08\u4F18\u5148\u7EA7\u4ECE\u9AD8\u5230\u4F4E\uFF09\uFF1A${ways.join("\u3001")}`;
+}
+function getEnvVar(name) {
+  if (process.env[name]) return process.env[name];
+  return loadConfig().env[name] || null;
+}
+
+// src/auth.js
 function parseSetCookie(headers) {
   const cookies = [];
   try {
@@ -7715,7 +7746,7 @@ async function ensureSession(profileName, baseUrl, cliOpts) {
   loadDotEnv();
   const creds = resolveCredentials(profileName, cliOpts || {}, loadConfig());
   if (!creds) {
-    throw new Error(`\u672A\u767B\u5F55\uFF0C\u8BF7\u5148\u6267\u884C "apollo-cli login ${profileName}" \u6216\u8BBE\u7F6E ${profileVarPrefix(profileName)}USERNAME/PASSWORD\uFF08\u4E5F\u53EF\u5728 config.json \u4E2D\u914D\u7F6E\uFF09`);
+    throw new Error(`\u672A\u767B\u5F55\uFF0C\u8BF7\u5148\u6267\u884C "apollo-cli login ${profileName}"\u3002${credentialsHint(profileName)}`);
   }
   const cookie = await login(creds, baseUrl);
   saveSession(profileName, { baseUrl, cookie, username: creds.username, savedAt: Date.now() });
@@ -7764,7 +7795,7 @@ async function portalRequest(method, pathname, opts = {}) {
       resp = await doFetch(relogin.cookie);
     } else {
       const reason = relogin?.error ? `\uFF0C\u81EA\u52A8\u91CD\u65B0\u767B\u5F55\u5931\u8D25\uFF1A${relogin.error}` : "\uFF0C\u4E14\u672A\u627E\u5230\u53EF\u7528\u51ED\u636E";
-      throw new Error(`\u767B\u5F55\u5DF2\u8FC7\u671F${reason}\u3002\u8BF7\u6267\u884C "apollo-cli login ${profileName}" \u6216\u914D\u7F6E ${profileVarPrefix(profileName)}USERNAME/PASSWORD\uFF08\u4E5F\u53EF\u5728 config.json \u4E2D\u914D\u7F6E\uFF09`);
+      throw new Error(`\u767B\u5F55\u5DF2\u8FC7\u671F${reason}\u3002\u8BF7\u6267\u884C "apollo-cli login ${profileName}"\u3002${credentialsHint(profileName)}`);
     }
   }
   return resp;
@@ -8358,7 +8389,7 @@ async function login2(profileArg, opts) {
   const baseUrl = config.baseUrl;
   const creds = resolveCredentials(profileName, opts, configFile);
   if (!creds) {
-    die(`\u672A\u627E\u5230\u51ED\u636E\u3002\u8BF7\u8BBE\u7F6E\u73AF\u5883\u53D8\u91CF ${profileVarPrefix(profileName)}USERNAME/PASSWORD, \u6216\u5168\u5C40 APOLLO_USERNAME/PASSWORD, \u6216\u4F7F\u7528 --username/--password, \u6216\u5728 config.json \u4E2D\u914D\u7F6E\uFF08profile \u7684 username/password \u5B57\u6BB5\u6216 env \u6BB5\uFF09`);
+    die(`\u672A\u627E\u5230\u51ED\u636E\u3002${credentialsHint(profileName)}`);
   }
   const cookie = await login(creds, baseUrl);
   saveSession(profileName, { baseUrl, cookie, username: creds.username, savedAt: Date.now() });

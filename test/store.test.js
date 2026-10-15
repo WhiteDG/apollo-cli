@@ -2,7 +2,7 @@ import { test, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, writeFileSync, rmSync, utimesSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { setupIsolatedHome, assertIsolated, withOutput, writeJSONFile, setEnv } from './helpers.js';
+import { setupIsolatedHome, assertIsolated, withOutput, writeJSONFile } from './helpers.js';
 
 // store.js 在模块加载期冻结 ~/.apollo-cli 路径，必须先完成隔离再动态 import
 const iso = setupIsolatedHome();
@@ -107,24 +107,6 @@ test('loadConfig：项目配置路径不可读时抛读取失败', () => {
     () => store.loadConfig(),
     err => err.message.includes('读取配置失败')
   );
-});
-
-// ---- getEnvVar ----
-
-test('getEnvVar：process.env 优先于 config.json env 段', () => {
-  writeJSONFile(userConfigFile, { profiles: {}, env: { APOLLO_PROFILE: 'from-cfg' } });
-  const restore = setEnv({ APOLLO_PROFILE: 'from-env' });
-  try {
-    assert.equal(store.getEnvVar('APOLLO_PROFILE'), 'from-env');
-  } finally {
-    restore();
-  }
-});
-
-test('getEnvVar：环境变量缺失时回退 config.json env 段，都没有返回 null', () => {
-  writeJSONFile(userConfigFile, { profiles: {}, env: { APOLLO_PROFILE: 'from-cfg' } });
-  assert.equal(store.getEnvVar('APOLLO_PROFILE'), 'from-cfg');
-  assert.equal(store.getEnvVar('APOLLO_MISSING'), null);
 });
 
 // ---- resolveProfile ----

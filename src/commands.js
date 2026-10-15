@@ -1,10 +1,11 @@
 import { loadDotEnv } from './dotenv.js';
 import {
   resolveProfile, getAllProfiles, saveUserConfig, removeProfile,
-  loadSession, saveSession, clearSession, setDefaultProfile, getEnvVar,
+  loadSession, saveSession, clearSession, setDefaultProfile,
   userConfigPath, loadProjectConfig
 } from './store.js';
-import { login as authLogin, resolveCredentials, ensureSession, profileVarPrefix } from './auth.js';
+import { login as authLogin, ensureSession } from './auth.js';
+import { resolveCredentials, credentialsHint, profileVarPrefix, getEnvVar } from './resolve.js';
 import * as api from './api.js';
 import * as filecontent from './filecontent.js';
 import { output } from './output.js';
@@ -59,7 +60,7 @@ export async function login(profileArg, opts) {
   const baseUrl = config.baseUrl;
   const creds = resolveCredentials(profileName, opts, configFile);
   if (!creds) {
-    die(`未找到凭据。请设置环境变量 ${profileVarPrefix(profileName)}USERNAME/PASSWORD, 或全局 APOLLO_USERNAME/PASSWORD, 或使用 --username/--password, 或在 config.json 中配置（profile 的 username/password 字段或 env 段）`);
+    die(`未找到凭据。${credentialsHint(profileName)}`);
   }
   const cookie = await authLogin(creds, baseUrl);
   saveSession(profileName, { baseUrl, cookie, username: creds.username, savedAt: Date.now() });

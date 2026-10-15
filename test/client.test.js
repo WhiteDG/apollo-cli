@@ -86,7 +86,9 @@ test('portalRequest：401 且无凭据时抛指引错误', async t => {
   const calls = fetchStub(t, () => emptyResponse(401));
   await assert.rejects(
     () => client.portalJSON('GET', '/x', opts),
-    /登录已过期，且未找到可用凭据。请执行 "apollo-cli login dev" 或配置 APOLLO_DEV_USERNAME\/PASSWORD/
+    err =>
+      err.message.includes('登录已过期，且未找到可用凭据。请执行 "apollo-cli login dev"。') &&
+      err.message.includes('APOLLO_DEV_USERNAME/PASSWORD')
   );
   assert.equal(calls.length, 1);
 });

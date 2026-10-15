@@ -108,15 +108,6 @@ export function loadConfig() {
   return result;
 }
 
-/**
- * 读取 CLI 使用的 APOLLO_* 变量：shell/.env（process.env）优先，
- * 回退 config.json 的 env 段（用户/项目合并，项目覆盖用户）。
- */
-export function getEnvVar(name) {
-  if (process.env[name]) return process.env[name];
-  return loadConfig().env[name] || null;
-}
-
 export function resolveProfile(profileName) {
   const config = loadConfig();
   const profiles = config.profiles;
