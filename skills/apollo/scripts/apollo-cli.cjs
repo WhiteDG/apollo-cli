@@ -7556,30 +7556,19 @@ function removeProfile(name) {
   }
   return scopes;
 }
-function clearUserCredentials(profileName, prefix) {
-  const result = { envKeys: [], profileFields: false };
+function clearUserCredentials(prefix) {
   const user = readJSON(USER_CONFIG);
-  if (!user) return result;
-  let changed = false;
-  if (user.env && typeof user.env === "object") {
-    for (const suffix of ["USERNAME", "PASSWORD"]) {
-      const key = `${prefix}${suffix}`;
-      if (Object.hasOwn(user.env, key)) {
-        delete user.env[key];
-        result.envKeys.push(key);
-        changed = true;
-      }
+  if (!user || !user.env || typeof user.env !== "object") return [];
+  const removed = [];
+  for (const suffix of ["USERNAME", "PASSWORD"]) {
+    const key = `${prefix}${suffix}`;
+    if (Object.hasOwn(user.env, key)) {
+      delete user.env[key];
+      removed.push(key);
     }
   }
-  const profile = user.profiles?.[profileName];
-  if (profile && (profile.username !== void 0 || profile.password !== void 0)) {
-    delete profile.username;
-    delete profile.password;
-    result.profileFields = true;
-    changed = true;
-  }
-  if (changed) writeJSON(USER_CONFIG, user);
-  return result;
+  if (removed.length > 0) writeJSON(USER_CONFIG, user);
+  return removed;
 }
 function setDefaultProfile(name) {
   const project = (0, import_node_fs2.existsSync)(PROJECT_CONFIG) ? readJSON(PROJECT_CONFIG) : null;
@@ -7638,15 +7627,6 @@ function profileVarName(profileName, suffix) {
 function pair(store, userKey, passKey, from) {
   return store[userKey] && store[passKey] ? { username: store[userKey], password: store[passKey], from } : null;
 }
-var warnedDeprecated = /* @__PURE__ */ new Set();
-function warnDeprecatedProfileFields(profileName) {
-  if (warnedDeprecated.has(profileName)) return;
-  warnedDeprecated.add(profileName);
-  process.stderr.write(
-    `\u8B66\u544A\uFF1Aconfig.json \u7684 profiles.${profileName} \u624B\u5199\u51ED\u636E\u5B57\u6BB5\uFF08username/password\uFF09\u5DF2\u5F03\u7528\uFF0C\u8BF7\u6539\u7528 env \u6BB5\u7684 ${profileVarName(profileName, "USERNAME")}/PASSWORD\uFF1B\u540E\u7EED\u7248\u672C\u5C06\u4E0D\u518D\u8BFB\u53D6
-`
-  );
-}
 var CREDENTIAL_SOURCES = [
   {
     hint: "--username/--password",
@@ -7662,15 +7642,6 @@ var CREDENTIAL_SOURCES = [
   {
     hint: "\u73AF\u5883\u53D8\u91CF APOLLO_USERNAME/PASSWORD",
     read: () => pair(process.env, "APOLLO_USERNAME", "APOLLO_PASSWORD", "APOLLO_USERNAME")
-  },
-  {
-    hint: (profileName) => `config.json \u7684 profiles.${profileName} \u624B\u5199\u51ED\u636E\u5B57\u6BB5\uFF08\u5DF2\u5F03\u7528\uFF09`,
-    read: (profileName, cliOpts, cfg) => {
-      const profile = cfg.profiles?.[profileName];
-      if (!profile?.username || !profile?.password) return null;
-      warnDeprecatedProfileFields(profileName);
-      return { username: profile.username, password: profile.password, from: `profiles.${profileName}` };
-    }
   },
   {
     hint: (profileName) => `config.json env \u6BB5\u7684 ${profileVarName(profileName, "USERNAME")}/PASSWORD`,
@@ -8467,17 +8438,13 @@ function logout(profileArg, opts = {}) {
   const ctx = profileCtx(profileArg, opts);
   clearSession(ctx.profileName);
   const prefix = profileVarPrefix(ctx.profileName);
-  const cleared = clearUserCredentials(ctx.profileName, prefix);
-  const clearedParts = [
-    ...cleared.envKeys,
-    ...cleared.profileFields ? [`profiles.${ctx.profileName} \u624B\u5199\u51ED\u636E\u5B57\u6BB5`] : []
-  ];
+  const cleared = clearUserCredentials(prefix);
   const remaining = resolveCredentials(ctx.profileName, {}, loadConfig());
-  const text = `\u5DF2\u9000\u51FA ${ctx.profileName}\uFF1A\u4F1A\u8BDD\u5DF2\u6E05\u9664` + (clearedParts.length > 0 ? `\uFF0C\u7528\u6237\u7EA7\u51ED\u636E\u5DF2\u5220\u9664\uFF08${clearedParts.join("\u3001")}\uFF09` : "\uFF08\u7528\u6237\u7EA7\u914D\u7F6E\u4E2D\u65E0\u51ED\u636E\uFF09") + (remaining ? `
+  const text = `\u5DF2\u9000\u51FA ${ctx.profileName}\uFF1A\u4F1A\u8BDD\u5DF2\u6E05\u9664` + (cleared.length > 0 ? `\uFF0C\u7528\u6237\u7EA7\u51ED\u636E\u5DF2\u5220\u9664\uFF08${cleared.join("\u3001")}\uFF09` : "\uFF08\u7528\u6237\u7EA7\u914D\u7F6E\u4E2D\u65E0\u51ED\u636E\uFF09") + (remaining ? `
 \u6CE8\u610F\uFF1A\u4ECD\u6709\u53EF\u7528\u51ED\u636E\uFF08\u6765\u6E90: ${remaining.from}\uFF09\uFF0C\u4E0B\u4E00\u6761\u547D\u4EE4\u4F1A\u81EA\u52A8\u91CD\u65B0\u767B\u5F55\uFF1B\u5982\u9700\u5F7B\u5E95\u9000\u51FA\u8BF7\u5148\u79FB\u9664\u8BE5\u6765\u6E90` : "");
   emit(opts, {
     profile: ctx.profileName,
-    credentialsCleared: clearedParts.length > 0,
+    credentialsCleared: cleared.length > 0,
     credentialsRemaining: !!remaining
   }, text);
 }
@@ -8610,14 +8577,14 @@ function profileRm(name, opts = {}) {
   clearSession(name);
   const prefix = profileVarPrefix(name);
   const shared = Object.keys(getAllProfiles().profiles).some((n) => profileVarPrefix(n) === prefix);
-  const cleared = shared ? { envKeys: [], profileFields: false } : clearUserCredentials(name, prefix);
+  const cleared = shared ? [] : clearUserCredentials(prefix);
   const notes = [];
-  if (cleared.envKeys.length > 0) notes.push(`\u5DF2\u6E05\u9664\u7528\u6237\u7EA7\u914D\u7F6E\u4E2D\u7684\u51ED\u636E\uFF08${cleared.envKeys.join("\u3001")}\uFF09`);
+  if (cleared.length > 0) notes.push(`\u5DF2\u6E05\u9664\u7528\u6237\u7EA7\u914D\u7F6E\u4E2D\u7684\u51ED\u636E\uFF08${cleared.join("\u3001")}\uFF09`);
   if (shared) notes.push(`\u6CE8\u610F\uFF1A\u5176\u4ED6 profile \u5F52\u4E00\u540E\u5171\u7528 ${prefix}* \u53D8\u91CF\uFF0Cenv \u6BB5\u51ED\u636E\u672A\u6E05\u9664`);
   emit(opts, {
     name,
     removedFrom: scopes,
-    ...cleared.envKeys.length > 0 ? { clearedCredentials: cleared.envKeys } : {},
+    ...cleared.length > 0 ? { clearedCredentials: cleared } : {},
     ...shared ? { sharedPrefix: true } : {}
   }, `profile "${name}" \u5DF2\u5220\u9664\uFF08\u4ECE${scopes.join("\u3001")}\u4E2D\u79FB\u9664\uFF09` + notes.map((note) => `
 ${note}`).join(""));

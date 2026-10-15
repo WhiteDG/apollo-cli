@@ -5,7 +5,6 @@ import { join } from 'node:path';
 import {
   setupIsolatedHome,
   assertIsolated,
-  withOutput,
   fetchStub,
   jsonResponse,
   redirectResponse,
@@ -251,18 +250,15 @@ test('ensureSession：cwd 的 .env 提供凭据（loadDotEnv 集成）', async t
   }
 });
 
-test('ensureSession：config.json profile 字段凭据可自动登录', async t => {
+test('ensureSession：config.json profile 手写凭据字段不再读取', async t => {
   seedUserConfig(iso.home, {
     default: 'dev',
     profiles: { dev: { baseUrl: portal, username: 'cfgu', password: 'cfgp' } }
   });
-  fetchStub(t, (record, idx) =>
-    idx === 0 ? redirectResponse('/apps', ['JSESSIONID=cfg']) : jsonResponse([])
-  );
-  const { result: cookie } = await withOutput(() => auth.ensureSession('dev', portal, {}));
-  assert.equal(cookie, 'NG_TRANSLATE_LANG_KEY=zh-CN; JSESSIONID=cfg');
-  const session = JSON.parse(readFileSync(join(iso.home, '.apollo-cli', 'session.json'), 'utf8'));
-  assert.equal(session.dev.username, 'cfgu');
+  fetchStub(t, () => {
+    throw new Error('不应发起请求');
+  });
+  await assert.rejects(() => auth.ensureSession('dev', portal, {}), /未登录，请先执行/);
 });
 
 test('ensureSession：config.json env 段凭据可自动登录', async t => {
@@ -308,24 +304,26 @@ test('reLogin：无凭据返回 null 且不发请求', async t => {
   assert.equal(calls.length, 0);
 });
 
-test('reLogin：config.json 凭据可重新登录并透传密码', async t => {
+test('reLogin：config.json env 段凭据可重新登录并透传密码', async t => {
   seedUserConfig(iso.home, {
-    profiles: { dev: { baseUrl: portal, username: 'cfgu', password: 'cfgp' } }
+    profiles: { dev: { baseUrl: portal } },
+    env: { APOLLO_DEV_USERNAME: 'cfgu', APOLLO_DEV_PASSWORD: 'cfgp' }
   });
   const calls = fetchStub(t, (record, idx) =>
     idx === 0 ? redirectResponse('/apps', ['JSESSIONID=relogcfg']) : jsonResponse([])
   );
-  const { result } = await withOutput(() => auth.reLogin('dev', portal));
+  const result = await auth.reLogin('dev', portal);
   assert.equal(result.cookie, 'NG_TRANSLATE_LANG_KEY=zh-CN; JSESSIONID=relogcfg');
   assert.equal(calls[0].body.toString(), 'username=cfgu&password=cfgp&login-submit=%E7%99%BB%E5%BD%95');
 });
 
-test('reLogin：config.json 凭据登录失败时返回 {error} 说明凭据已被采用', async t => {
+test('reLogin：config.json env 段凭据登录失败时返回 {error} 说明凭据已被采用', async t => {
   seedUserConfig(iso.home, {
-    profiles: { dev: { baseUrl: portal, username: 'cfgu', password: 'cfgp' } }
+    profiles: { dev: { baseUrl: portal } },
+    env: { APOLLO_DEV_USERNAME: 'cfgu', APOLLO_DEV_PASSWORD: 'cfgp' }
   });
   fetchStub(t, () => jsonResponse({}, 200));
-  const { result } = await withOutput(() => auth.reLogin('dev', portal));
+  const result = await auth.reLogin('dev', portal);
   assert.deepEqual(result, { error: '登录失败：Portal 返回 HTTP 200（http://portal.test）' });
 });
 

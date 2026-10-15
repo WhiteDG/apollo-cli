@@ -97,19 +97,15 @@ export function logout(profileArg, opts = {}) {
   const ctx = profileCtx(profileArg, opts);
   clearSession(ctx.profileName);
   const prefix = profileVarPrefix(ctx.profileName);
-  const cleared = clearUserCredentials(ctx.profileName, prefix);
-  const clearedParts = [
-    ...cleared.envKeys,
-    ...(cleared.profileFields ? [`profiles.${ctx.profileName} 手写凭据字段`] : [])
-  ];
+  const cleared = clearUserCredentials(prefix);
   // 会话与用户级凭据都清掉后，若仍有来源可用（shell/.env、项目配置），如实提示会自动重登
   const remaining = resolveCredentials(ctx.profileName, {}, loadConfig());
   const text = `已退出 ${ctx.profileName}：会话已清除` +
-    (clearedParts.length > 0 ? `，用户级凭据已删除（${clearedParts.join('、')}）` : '（用户级配置中无凭据）') +
+    (cleared.length > 0 ? `，用户级凭据已删除（${cleared.join('、')}）` : '（用户级配置中无凭据）') +
     (remaining ? `\n注意：仍有可用凭据（来源: ${remaining.from}），下一条命令会自动重新登录；如需彻底退出请先移除该来源` : '');
   emit(opts, {
     profile: ctx.profileName,
-    credentialsCleared: clearedParts.length > 0,
+    credentialsCleared: cleared.length > 0,
     credentialsRemaining: !!remaining
   }, text);
 }
@@ -262,14 +258,14 @@ export function profileRm(name, opts = {}) {
   const prefix = profileVarPrefix(name);
   // 归一前缀被其他 profile 共用时，env 段凭据仍被对方使用，不能清
   const shared = Object.keys(getAllProfiles().profiles).some(n => profileVarPrefix(n) === prefix);
-  const cleared = shared ? { envKeys: [], profileFields: false } : clearUserCredentials(name, prefix);
+  const cleared = shared ? [] : clearUserCredentials(prefix);
   const notes = [];
-  if (cleared.envKeys.length > 0) notes.push(`已清除用户级配置中的凭据（${cleared.envKeys.join('、')}）`);
+  if (cleared.length > 0) notes.push(`已清除用户级配置中的凭据（${cleared.join('、')}）`);
   if (shared) notes.push(`注意：其他 profile 归一后共用 ${prefix}* 变量，env 段凭据未清除`);
   emit(opts, {
     name,
     removedFrom: scopes,
-    ...(cleared.envKeys.length > 0 ? { clearedCredentials: cleared.envKeys } : {}),
+    ...(cleared.length > 0 ? { clearedCredentials: cleared } : {}),
     ...(shared ? { sharedPrefix: true } : {})
   }, `profile "${name}" 已删除（从${scopes.join('、')}中移除）` + notes.map(note => `\n${note}`).join(''));
 }

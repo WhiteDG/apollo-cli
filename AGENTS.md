@@ -49,7 +49,7 @@ This file provides guidance to the AI agent when working with code in this repos
 
 - 变量与凭据解析统一在 `src/resolve.js`：非凭据的 CLI 变量（如 `APOLLO_PROFILE`）走 `getEnvVar`（process.env 优先，回退 config.json 的 `env` 段）；凭据走 `resolveCredentials` 的来源注册表 `CREDENTIAL_SOURCES`（顺序即优先级），「未找到凭据」提示由 `credentialsHint` 从注册表生成。新增凭据来源只改注册表并补测试，不要在各命令里手写来源枚举或提示文案。
 - 凭据生命周期：`login` 用 flags 传入的凭据会落盘到用户级 env 段（其它来源不复制）；`logout` 清除会话与用户级凭据（`store.js` 的 `clearUserCredentials`，shell/.env 与项目级配置不代为清除，仍有可用来源时提示会自动重登）；`profile rm` 级联清理 env 段凭据（前缀被其他 profile 共用时跳过并提示）。
-- config.json 中 profiles 手写 `username`/`password` 凭据字段已弃用（`resolve.js` 命中时向 stderr 警告一次，按 profile 去重）；文档与提示只宣传三种方式（flags、shell/.env、config.json env 段），下个版本移除读取。
+- config.json profile 内的 `username`/`password` 字段已不再读取（旧的兼容读取已移除）；凭据来源为 flags、shell/.env、config.json env 段三种。
 - 凭据文件权限：`store.js` 读取 `~/.apollo-cli/config.json` 与 `session.json` 时做 POSIX 权限检查（group/other 可读则 warnOnce 提示 chmod 600，Windows 跳过、依赖用户目录 ACL）；`warnOnce` 按「路径+文案」去重。profile 名归一前缀冲突在 `profile add`/`setup` 时直接报错（`assertPrefixFree`），不再只提示。
 - 本地 `.env` 与 `apollo-cli.config.json` 含真实凭据且已 gitignore：绝不打印其内容或提交它们。
 - 未经用户要求不要访问线上 Apollo Portal（登录、读写配置均有副作用）。

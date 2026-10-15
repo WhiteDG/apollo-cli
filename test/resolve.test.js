@@ -2,7 +2,7 @@ import { test, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { setupIsolatedHome, assertIsolated, withOutput, writeJSONFile, setEnv } from './helpers.js';
+import { setupIsolatedHome, assertIsolated, writeJSONFile, setEnv } from './helpers.js';
 
 // resolve.js 经 store.js 在模块加载期冻结 ~/.apollo-cli 路径，必须先完成隔离再动态 import
 const iso = setupIsolatedHome();
@@ -105,26 +105,20 @@ test('resolveCredentials：--password 单独提供无效，全无凭据返回 nu
   assert.equal(resolve.resolveCredentials('dev', {}), null);
 });
 
-test('resolveCredentials：config.json 的 profile 字段提供凭据', async () => {
+test('resolveCredentials：config.json 的 profile 手写凭据字段不再读取', () => {
   const cfg = { profiles: { fat: { baseUrl: 'http://p', username: 'cfg-u', password: 'cfg-p' } }, env: {} };
-  const { result } = await withOutput(() => resolve.resolveCredentials('fat', {}, cfg));
-  assert.deepEqual(result, {
-    username: 'cfg-u',
-    password: 'cfg-p',
-    from: 'profiles.fat'
-  });
+  assert.equal(resolve.resolveCredentials('fat', {}, cfg), null);
 });
 
-test('resolveCredentials：config.json 的 env 段提供凭据，profile 字段优先于 env 段', async () => {
+test('resolveCredentials：config.json 的 env 段提供凭据，profile 手写字段不参与', () => {
   const both = {
     profiles: { fat: { username: 'field-u', password: 'field-p' } },
     env: { APOLLO_FAT_USERNAME: 'env-u', APOLLO_FAT_PASSWORD: 'env-p' }
   };
-  const { result: first } = await withOutput(() => resolve.resolveCredentials('fat', {}, both));
-  assert.deepEqual(first, {
-    username: 'field-u',
-    password: 'field-p',
-    from: 'profiles.fat'
+  assert.deepEqual(resolve.resolveCredentials('fat', {}, both), {
+    username: 'env-u',
+    password: 'env-p',
+    from: 'APOLLO_FAT_USERNAME (config.json)'
   });
 
   const envOnly = { profiles: {}, env: { APOLLO_FAT_USERNAME: 'env-u', APOLLO_FAT_PASSWORD: 'env-p' } };
@@ -142,7 +136,7 @@ test('resolveCredentials：config.json 的 env 段提供凭据，profile 字段�
   });
 });
 
-test('resolveCredentials：进程环境变量（shell/.env）优先于 config.json 两个来源', () => {
+test('resolveCredentials：进程环境变量（shell/.env）优先于 config.json env 段', () => {
   const restore = setEnv({ APOLLO_FAT_USERNAME: 'shell-u', APOLLO_FAT_PASSWORD: 'shell-p' });
   const cfg = {
     profiles: { fat: { username: 'field-u', password: 'field-p' } },
@@ -162,18 +156,6 @@ test('resolveCredentials：进程环境变量（shell/.env）优先于 config.js
 test('resolveCredentials：config.json 凭据只配一半时忽略该来源', () => {
   assert.equal(resolve.resolveCredentials('fat', {}, { profiles: { fat: { username: 'only-u' } }, env: {} }), null);
   assert.equal(resolve.resolveCredentials('fat', {}, { profiles: {}, env: { APOLLO_FAT_USERNAME: 'only-u' } }), null);
-});
-
-test('resolveCredentials：手写凭据字段命中时警告一次（弃用提示）', async () => {
-  const cfg = { profiles: { dep: { username: 'u', password: 'p' } }, env: {} };
-  const first = await withOutput(() => resolve.resolveCredentials('dep', {}, cfg));
-  assert.deepEqual(first.result, { username: 'u', password: 'p', from: 'profiles.dep' });
-  assert.match(first.stderr, /已弃用/);
-  assert.match(first.stderr, /APOLLO_DEP_USERNAME\/PASSWORD/);
-
-  const second = await withOutput(() => resolve.resolveCredentials('dep', {}, cfg));
-  assert.deepEqual(second.result, { username: 'u', password: 'p', from: 'profiles.dep' });
-  assert.equal(second.stderr, '', '同一 profile 的弃用警告只输出一次');
 });
 
 // ---- getEnvVar ----
@@ -203,6 +185,6 @@ test('credentialsHint：来源列表由注册表生成，含归一后的变量�
   assert.ok(hint.includes('环境变量 APOLLO_USERNAME/PASSWORD'));
   assert.ok(hint.includes('config.json env 段的 APOLLO_FAT_2_USERNAME/PASSWORD'));
   assert.ok(hint.includes('config.json env 段的 APOLLO_USERNAME/APOLLO_PASSWORD'));
-  assert.ok(hint.includes('手写凭据字段（已弃用）'));
+  assert.equal(hint.includes('手写'), false, '提示中不应再出现已移除的手写凭据字段');
   assert.equal(hint.includes('FAT-2'), false, '提示中不应出现未归一的 profile 名大写形式');
 });

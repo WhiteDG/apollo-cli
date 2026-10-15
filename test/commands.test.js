@@ -111,7 +111,7 @@ test('profileAdd：--json 输出结构化结果', async () => {
   assert.match(data.defaultPath, /config\.json$/);
 });
 
-test('profileAdd：更新已有 profile 时保留手写凭据字段', async () => {
+test('profileAdd：更新已有 profile 时保留额外手写字段', async () => {
   seedUserConfig(iso.home, {
     profiles: { dev: { baseUrl: portal, username: 'u1', password: 'p1' } }
   });
@@ -257,17 +257,16 @@ test('logout：清除用户级 env 段凭据并保留其他键', async () => {
   assert.equal(cfg.env.KEEP, '1');
 });
 
-test('logout：清除 profile 手写凭据字段，保留其他字段', async () => {
+test('logout：不读取也不清除 profile 手写字段', async () => {
   seedUserConfig(iso.home, {
     default: 'dev',
     profiles: { dev: { baseUrl: portal, portalEnv: 'DEV', username: 'u', password: 'p' } }
   });
   const { stdout } = await withOutput(() => commands.logout(null, {}));
-  assert.equal(stdout, '已退出 dev：会话已清除，用户级凭据已删除（profiles.dev 手写凭据字段）\n');
+  assert.equal(stdout, '已退出 dev：会话已清除（用户级配置中无凭据）\n');
   const profile = readJSON(userConfigFile).profiles.dev;
-  assert.equal('username' in profile, false);
-  assert.equal('password' in profile, false);
-  assert.equal(profile.baseUrl, portal);
+  assert.equal(profile.username, 'u');
+  assert.equal(profile.password, 'p');
 });
 
 test('logout：shell/.env 凭据仍在时提示会自动重登', async () => {
@@ -1036,15 +1035,10 @@ test('shell 的 APOLLO_PROFILE 优先于 config.json env 段', async t => {
   }
 });
 
-test('login：config.json 的 profile 字段凭据可用', async t => {
+test('login：profile 手写凭据字段不再读取（报未找到凭据）', async () => {
   seedUserConfig(iso.home, {
     default: 'dev',
     profiles: { dev: { baseUrl: portal, portalEnv: 'DEV', username: 'cfgu', password: 'cfgp' } }
   });
-  fetchStub(t, (record, idx) =>
-    idx === 0 ? redirectResponse('/apps', ['JSESSIONID=cfgu']) : jsonResponse([])
-  );
-  const { stdout } = await withOutput(() => commands.login('dev', {}));
-  assert.equal(stdout, '登录成功 (dev: http://portal.test) [cfgu]\n');
-  assert.equal(readJSON(sessionFile).dev.username, 'cfgu');
+  await assert.rejects(withOutput(() => commands.login('dev', {})), /未找到凭据。可用凭据来源/);
 });

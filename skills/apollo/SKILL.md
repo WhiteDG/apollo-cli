@@ -19,7 +19,7 @@ description: 用本技能自带的 apollo-cli 命令行工具查看、修改、�
 - 先解析 `<SK>`，再运行 `node "<SK>/scripts/apollo-cli.cjs" --version`：输出 `apollo-cli <版本号>` 即可用。报 `Cannot find module ...` 说明 `<SK>` 解析错了，回到上一步重新解析，不要改走手写 HTTP 请求等其他绕行方式。
 - 报 `node: command not found`，或 `node --version` 低于 21 时，告知用户"运行本技能需要 Node.js >= 21，请先安装/升级 Node"，不要绕行。
 - `node "<SK>/scripts/apollo-cli.cjs" profile list` 查看已配置的 profile、默认 profile、登录状态。用户说"fat 环境"就加 `-p fat`；没说时先确认默认 profile 是什么再动手。
-- **命令要在项目根目录执行**：profile 定义来自 `~/.apollo-cli/config.json`（用户级）与当前目录的 `./apollo-cli.config.json`（项目级）合并（同名 profile 项目级整体替换用户级，不是字段合并），凭据可从 shell 环境变量、当前目录的 `.env`、或这两个 config.json 的 `env` 段读取（shell 环境变量 > `.env` > config.json；profile 手写 `username`/`password` 字段已弃用，读取时会警告）。所以跑命令时留在含这两个文件的项目根目录；如果 profile 突然报"未配置"或凭据找不到，先检查当前目录是不是不在项目根，不要急着删掉 profile 重建。
+- **命令要在项目根目录执行**：profile 定义来自 `~/.apollo-cli/config.json`（用户级）与当前目录的 `./apollo-cli.config.json`（项目级）合并（同名 profile 项目级整体替换用户级，不是字段合并），凭据可从 shell 环境变量、当前目录的 `.env`、或这两个 config.json 的 `env` 段读取（shell 环境变量 > `.env` > config.json）。所以跑命令时留在含这两个文件的项目根目录；如果 profile 突然报"未配置"或凭据找不到，先检查当前目录是不是不在项目根，不要急着删掉 profile 重建。
 - `profile list` 为空、报"未找到凭据"、或用户所说的环境没有对应 profile 时：按下文「首次配置」处理；不要替用户编造凭据，也不要去打印 `.env`、`~/.apollo-cli/session.json` 的内容。
 
 ### 首次配置（推荐由你代跑，用户只提供三样信息）

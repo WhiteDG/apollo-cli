@@ -157,7 +157,7 @@ export function loadProjectConfig() {
 
 export function saveUserConfig(data, { mode } = {}) {
   const existing = readJSON(USER_CONFIG) || { profiles: {} };
-  // 按字段合并同名 profile：保留手写的 username/password 等字段
+  // 按字段合并同名 profile：保留手写的其它字段
   const merged = { ...existing.profiles };
   for (const [name, profile] of Object.entries(data.profiles || {})) {
     merged[name] = { ...merged[name], ...profile };
@@ -197,34 +197,22 @@ export function removeProfile(name) {
 }
 
 /**
- * 清除用户级配置中该 profile 的凭据：env 段的 <prefix>USERNAME/PASSWORD 键
- * 与 profile 对象里手写的 username/password 字段（只动用户级，项目级配置不代为改写）。
- * 返回实际清除的内容。
+ * 清除用户级配置 env 段中该前缀的凭据键（只动用户级，项目级配置不代为改写）。
+ * 返回实际清除的键名列表。
  */
-export function clearUserCredentials(profileName, prefix) {
-  const result = { envKeys: [], profileFields: false };
+export function clearUserCredentials(prefix) {
   const user = readJSON(USER_CONFIG);
-  if (!user) return result;
-  let changed = false;
-  if (user.env && typeof user.env === 'object') {
-    for (const suffix of ['USERNAME', 'PASSWORD']) {
-      const key = `${prefix}${suffix}`;
-      if (Object.hasOwn(user.env, key)) {
-        delete user.env[key];
-        result.envKeys.push(key);
-        changed = true;
-      }
+  if (!user || !user.env || typeof user.env !== 'object') return [];
+  const removed = [];
+  for (const suffix of ['USERNAME', 'PASSWORD']) {
+    const key = `${prefix}${suffix}`;
+    if (Object.hasOwn(user.env, key)) {
+      delete user.env[key];
+      removed.push(key);
     }
   }
-  const profile = user.profiles?.[profileName];
-  if (profile && (profile.username !== undefined || profile.password !== undefined)) {
-    delete profile.username;
-    delete profile.password;
-    result.profileFields = true;
-    changed = true;
-  }
-  if (changed) writeJSON(USER_CONFIG, user);
-  return result;
+  if (removed.length > 0) writeJSON(USER_CONFIG, user);
+  return removed;
 }
 
 /**

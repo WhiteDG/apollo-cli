@@ -207,7 +207,7 @@ test('userConfigPath：返回用户级配置文件绝对路径', () => {
   assert.equal(store.userConfigPath(), userConfigFile);
 });
 
-test('saveUserConfig：同名 profile 按字段合并，保留手写凭据与额外顶层键', () => {
+test('saveUserConfig：同名 profile 按字段合并，保留额外手写字段与顶层键', () => {
   writeJSONFile(userConfigFile, {
     name: 'my-project',
     profiles: { dev: { baseUrl: 'http://a', username: 'u', password: 'p' } }
