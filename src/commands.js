@@ -44,7 +44,7 @@ function profileCtx(hint, opts = {}) {
   return {
     profileName,
     baseUrl: config.baseUrl,
-    portalEnv: config.portalEnv || profileName.toUpperCase(),
+    portalEnv: opts['portal-env'] || config.portalEnv || profileName.toUpperCase(),
     cluster: opts.cluster || config.cluster || 'default',
     namespace: opts.namespace || 'application',
     config

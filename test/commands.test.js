@@ -551,6 +551,18 @@ test('configSet：--namespace/--cluster 透传进 URL', async t => {
   assert.equal(calls.length, 3);
 });
 
+test('configSet：--portal-env 覆盖 profile 配置的 portalEnv', async t => {
+  seedDev();
+  const calls = fetchStub(t, () => jsonResponse([]));
+  await withOutput(() =>
+    commands.configSet('app', 'k', 'v', { 'portal-env': 'PROD' })
+  );
+  assert.equal(
+    calls[0].url,
+    `${portal}/apps/app/envs/PROD/clusters/default/namespaces/application/items`
+  );
+});
+
 test('configRm：未命中报错', async t => {
   seedDev();
   fetchStub(t, () => jsonResponse([{ key: 'other', value: 'v' }]));

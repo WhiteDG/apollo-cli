@@ -8395,7 +8395,7 @@ function profileCtx(hint, opts = {}) {
   return {
     profileName,
     baseUrl: config.baseUrl,
-    portalEnv: config.portalEnv || profileName.toUpperCase(),
+    portalEnv: opts["portal-env"] || config.portalEnv || profileName.toUpperCase(),
     cluster: opts.cluster || config.cluster || "default",
     namespace: opts.namespace || "application",
     config
@@ -8961,6 +8961,7 @@ profile \u7BA1\u7406:
 \u5168\u5C40\u9009\u9879\uFF08\u53EF\u653E\u5728\u5B50\u547D\u4EE4\u524D\u6216\u540E\uFF09:
   -p, --profile <name>          \u9009\u62E9 profile\uFF08\u9ED8\u8BA4\u53D6\u81EA config.default\uFF09
   --cluster <name>              \u96C6\u7FA4\uFF0C\u9ED8\u8BA4\u8BFB\u53D6 profile \u914D\u7F6E\uFF08\u672A\u914D\u7F6E\u5219 "default"\uFF09
+  --portal-env <env>            Apollo \u5185\u90E8\u73AF\u5883\u540D\uFF0C\u9ED8\u8BA4\u8BFB\u53D6 profile \u914D\u7F6E\uFF08\u672A\u914D\u7F6E\u5219 profile \u540D\u5927\u5199\uFF09
   -n, --namespace <name>        \u547D\u540D\u7A7A\u95F4\uFF0C\u9ED8\u8BA4 "application"
   --json                        \u8F93\u51FA JSON \u683C\u5F0F\uFF08\u8BFB\u5199\u547D\u4EE4\u5747\u652F\u6301\uFF09
   -h, --help                    \u663E\u793A\u5E2E\u52A9
@@ -9017,6 +9018,7 @@ function parseCfg(extra = {}) {
       version: { type: "boolean", short: "V", default: false },
       profile: { type: "string", short: "p" },
       cluster: { type: "string" },
+      "portal-env": { type: "string" },
       namespace: { type: "string", short: "n", default: "application" },
       json: { type: "boolean", default: false },
       ...extra
@@ -9036,7 +9038,7 @@ async function run() {
     process.stderr.write((e instanceof Error ? e.message : String(e)) + "\n");
   }
 }
-var GLOBAL_VALUE_OPTS = /* @__PURE__ */ new Set(["-p", "--profile", "-n", "--namespace", "--cluster"]);
+var GLOBAL_VALUE_OPTS = /* @__PURE__ */ new Set(["-p", "--profile", "-n", "--namespace", "--cluster", "--portal-env"]);
 var STOP_TOKENS = /* @__PURE__ */ new Set(["-h", "--help", "-V", "--version", "--"]);
 function splitGlobalPrefix(raw) {
   const prefix = [];
@@ -9104,7 +9106,6 @@ async function main(raw) {
     case "setup": {
       const p = parseCli({ args, ...parseCfg({
         "base-url": { type: "string" },
-        "portal-env": { type: "string" },
         username: { type: "string" },
         password: { type: "string" },
         default: { type: "boolean", default: false }
@@ -9145,7 +9146,7 @@ function handleProfile(rawArgs) {
     }
     case "add": {
       const p = parseCli(
-        { args, ...parseCfg({ "base-url": { type: "string" }, "portal-env": { type: "string" }, default: { type: "boolean", default: false } }) },
+        { args, ...parseCfg({ "base-url": { type: "string" }, default: { type: "boolean", default: false } }) },
         USAGE.profile
       );
       const [name] = pos(p, 1, "profile add <name> --base-url <url>");

@@ -206,6 +206,7 @@ apollo-cli config set MyApp 'server.ports[0]' 8080 -n app.yml --string
 |---|---|---|
 | `--profile <name>` | `-p` | profile 名（优先级高于 APOLLO_PROFILE） |
 | `--cluster <name>` | | 集群名，默认读取 profile 配置的 cluster |
+| `--portal-env <env>` | | Apollo 内部环境名，默认读取 profile 配置的 portalEnv（未配置则 profile 名大写） |
 | `--namespace <name>` | `-n` | 命名空间，默认 "application" |
 | `--json` | | JSON 格式输出（读写命令均支持） |
 | `--help` | `-h` | 显示帮助 |

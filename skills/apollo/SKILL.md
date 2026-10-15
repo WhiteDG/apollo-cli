@@ -53,7 +53,7 @@ node "<SK>/scripts/apollo-cli.cjs" config publish <appId> [-n ns] [--title 标�
 node "<SK>/scripts/apollo-cli.cjs" config releases <appId> [-n ns] [--limit n]
 ```
 
-全局选项：`-p/--profile` profile、`--cluster` 集群、`-n/--namespace` 命名空间（默认 `application`）、`--json` 输出 JSON（读写命令都支持，需要解析输出或确认写结果时用）。全局选项放在子命令前或后都可以；`-h/--help`、`-V/--version` 在 `--` 之前的任意位置都生效（如 `-V`、`config -V`、`--json config -h`）。
+全局选项：`-p/--profile` profile、`--cluster` 集群、`--portal-env` 内部环境名（一般不用传，profile 里已配好）、`-n/--namespace` 命名空间（默认 `application`）、`--json` 输出 JSON（读写命令都支持，需要解析输出或确认写结果时用）。全局选项放在子命令前或后都可以；`-h/--help`、`-V/--version` 在 `--` 之前的任意位置都生效（如 `-V`、`config -V`、`--json config -h`）。
 
 上面只列了常用命令与主要选项；**完整命令与全局选项以 `--help` 为准**（根命令：`node "<SK>/scripts/apollo-cli.cjs" --help`；某个分组的用法：`node "<SK>/scripts/apollo-cli.cjs" config --help`）。
 

@@ -53,6 +53,7 @@ profile 管理:
 全局选项（可放在子命令前或后）:
   -p, --profile <name>          选择 profile（默认取自 config.default）
   --cluster <name>              集群，默认读取 profile 配置（未配置则 "default"）
+  --portal-env <env>            Apollo 内部环境名，默认读取 profile 配置（未配置则 profile 名大写）
   -n, --namespace <name>        命名空间，默认 "application"
   --json                        输出 JSON 格式（读写命令均支持）
   -h, --help                    显示帮助
@@ -113,6 +114,7 @@ function parseCfg(extra = {}) {
       version: { type: 'boolean', short: 'V', default: false },
       profile: { type: 'string', short: 'p' },
       cluster: { type: 'string' },
+      'portal-env': { type: 'string' },
       namespace: { type: 'string', short: 'n', default: 'application' },
       json: { type: 'boolean', default: false },
       ...extra
@@ -136,7 +138,7 @@ export async function run() {
 }
 
 // 取值型全局选项：扫描前置选项时需连带跳过其参数值
-const GLOBAL_VALUE_OPTS = new Set(['-p', '--profile', '-n', '--namespace', '--cluster']);
+const GLOBAL_VALUE_OPTS = new Set(['-p', '--profile', '-n', '--namespace', '--cluster', '--portal-env']);
 const STOP_TOKENS = new Set(['-h', '--help', '-V', '--version', '--']);
 
 /** 把命令前的全局选项与命令本身分开：apollo-cli --json -p fat config ls App */
@@ -213,7 +215,6 @@ async function main(raw) {
     case 'setup': {
       const p = parseCli({ args, ...parseCfg({
         'base-url': { type: 'string' },
-        'portal-env': { type: 'string' },
         username: { type: 'string' },
         password: { type: 'string' },
         default: { type: 'boolean', default: false }
@@ -252,7 +253,7 @@ function handleProfile(rawArgs) {
     }
     case 'add': {
       const p = parseCli(
-        { args, ...parseCfg({ 'base-url': { type: 'string' }, 'portal-env': { type: 'string' }, default: { type: 'boolean', default: false } }) },
+        { args, ...parseCfg({ 'base-url': { type: 'string' }, default: { type: 'boolean', default: false } }) },
         USAGE.profile
       );
       const [name] = pos(p, 1, 'profile add <name> --base-url <url>');

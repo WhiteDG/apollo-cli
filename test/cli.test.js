@@ -282,6 +282,18 @@ test('cli：--profile 长选项生效', async t => {
   assert.equal(calls[0].url, 'http://uat.test/apps/app/envs/UAT/clusters/default/namespaces/application/items');
 });
 
+test('cli：全局 --portal-env 覆盖 profile 配置（前置/后置均可）', async t => {
+  seedDev();
+  const calls = fetchStub(t, () => jsonResponse([{ key: 'k', value: 'v' }]));
+  const before = await runCli(['--portal-env', 'PROD', 'config', 'get', 'app', 'k', '--json']);
+  assert.equal(before.exitCode, undefined);
+  assert.equal(calls[0].url, `${portal}/apps/app/envs/PROD/clusters/default/namespaces/application/items`);
+  const after = await runCli(['config', 'get', 'app', 'k', '--portal-env', 'PROD', '--json']);
+  assert.equal(after.exitCode, undefined);
+  assert.equal(calls[1].url, `${portal}/apps/app/envs/PROD/clusters/default/namespaces/application/items`);
+  assert.equal(calls.length, 2, '每次 config get 只应发出一次请求');
+});
+
 test('cli：前置全局选项与 -- 混用不被吞（回归：-p/--json 静默失效）', async t => {
   seedUserConfig(iso.home, {
     default: 'other',
