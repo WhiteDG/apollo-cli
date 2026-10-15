@@ -52,7 +52,7 @@ npx skills add https://github.com/WhiteDG/apollo-cli --skill apollo
 
 profile 与凭据跟 CLI 共用同一套配置：首次使用时 skill 会带你用 `setup` 一步完成（或按「快速开始」手动准备）。修改只写草稿、需要发布才生效；涉及生产类环境与删除操作时，skill 会先向你确认。
 
-skill 内的完整使用说明见 `skills/apollo/SKILL.md`，行为测试用例见 `skills/apollo/evals/`。
+skill 内的完整使用说明见 `skills/apollo/SKILL.md`；行为测试用例 `skills/apollo/evals/` 为本地文件，不入库。
 
 ## 快速开始
 

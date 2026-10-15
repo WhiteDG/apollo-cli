@@ -2,4 +2,5 @@ node_modules/
 .env
 apollo-cli.config.json
 skills/apollo-workspace/
+skills/apollo/evals/
 rust
