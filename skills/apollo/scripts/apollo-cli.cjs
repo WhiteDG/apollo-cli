@@ -8919,7 +8919,7 @@ var HELP = `apollo-cli \u2014 Apollo \u914D\u7F6E\u4E2D\u5FC3\u547D\u4EE4\u884C\
   setup [name]                 \u4E00\u6B65\u5B8C\u6210 profile + \u51ED\u636E\u914D\u7F6E\u5E76\u9A8C\u8BC1\u767B\u5F55\uFF08\u7F3A\u9879\u4EA4\u4E92\u5F0F\u8BE2\u95EE\uFF09
     --base-url <url>               portal \u5730\u5740\uFF08\u975E\u4EA4\u4E92\u73AF\u5883\u5FC5\u4F20\uFF09
     --username <u> --password <p>  Portal \u8D26\u53F7\u5BC6\u7801\uFF08\u975E\u4EA4\u4E92\u73AF\u5883\u5FC5\u4F20\uFF09
-    --portal-env <env>             \u5185\u90E8\u73AF\u5883\u540D\uFF0C\u9ED8\u8BA4 profile \u540D\u5927\u5199
+    --portal-env <env>             \u5185\u90E8\u73AF\u5883\u540D\uFF0C\u9996\u6B21\u9ED8\u8BA4 profile \u540D\u5927\u5199\uFF0C\u5DF2\u6709 profile \u65F6\u4FDD\u7559\u539F\u503C
     --cluster <name>               \u9ED8\u8BA4\u96C6\u7FA4\uFF0C\u9ED8\u8BA4 "default"
     --default                      \u8BBE\u4E3A\u9ED8\u8BA4 profile\uFF08\u65E0\u4EFB\u4F55 profile \u65F6\u81EA\u52A8\uFF09
 
@@ -9057,7 +9057,7 @@ function translateParseError(e) {
   let m = msg.match(/^Unknown option '([^']+)'/);
   if (m) return `\u672A\u77E5\u9009\u9879 '${m[1]}'\uFF08\u5982\u53C2\u6570\u503C\u4EE5 '-' \u5F00\u5934\uFF0C\u8BF7\u653E\u5728 "--" \u4E4B\u540E\uFF09`;
   m = msg.match(/^Option '([^']+)' argument missing/);
-  if (m) return `\u9009\u9879 '${m[1]}' \u7F3A\u5C11\u53C2\u6570\u503C`;
+  if (m) return `\u9009\u9879 '${m[1].replace(/ <value>$/, "")}' \u7F3A\u5C11\u53C2\u6570\u503C`;
   m = msg.match(/^Option '([^']+)' does not take an argument/);
   if (m) return `\u9009\u9879 '${m[1]}' \u4E0D\u63A5\u53D7\u53C2\u6570\u503C`;
   return `\u53C2\u6570\u89E3\u6790\u5931\u8D25: ${msg}`;

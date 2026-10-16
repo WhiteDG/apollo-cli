@@ -563,6 +563,17 @@ test('configSet：--portal-env 覆盖 profile 配置的 portalEnv', async t => {
   );
 });
 
+test('configGet：profile 未配置 portalEnv/cluster 时回退 profile 名大写与 default', async t => {
+  seedUserConfig(iso.home, { default: 'dev', profiles: { dev: { baseUrl: portal } } });
+  seedSession(iso.home, 'dev', { baseUrl: portal, cookie: 'sess-cookie', username: 'alice', savedAt: 1 });
+  const calls = fetchStub(t, () => jsonResponse([{ key: 'k', value: 'v' }]));
+  await withOutput(() => commands.configGet('app', 'k', {}));
+  assert.equal(
+    calls[0].url,
+    `${portal}/apps/app/envs/DEV/clusters/default/namespaces/application/items`
+  );
+});
+
 test('configRm：未命中报错', async t => {
   seedDev();
   fetchStub(t, () => jsonResponse([{ key: 'other', value: 'v' }]));

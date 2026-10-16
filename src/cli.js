@@ -11,7 +11,7 @@ const HELP = `apollo-cli — Apollo 配置中心命令行工具
   setup [name]                 一步完成 profile + 凭据配置并验证登录（缺项交互式询问）
     --base-url <url>               portal 地址（非交互环境必传）
     --username <u> --password <p>  Portal 账号密码（非交互环境必传）
-    --portal-env <env>             内部环境名，默认 profile 名大写
+    --portal-env <env>             内部环境名，首次默认 profile 名大写，已有 profile 时保留原值
     --cluster <name>               默认集群，默认 "default"
     --default                      设为默认 profile（无任何 profile 时自动）
 
@@ -160,7 +160,8 @@ function translateParseError(e) {
   let m = msg.match(/^Unknown option '([^']+)'/);
   if (m) return `未知选项 '${m[1]}'（如参数值以 '-' 开头，请放在 "--" 之后）`;
   m = msg.match(/^Option '([^']+)' argument missing/);
-  if (m) return `选项 '${m[1]}' 缺少参数值`;
+  // Node 报错文案含取值占位（如 '--foo <value>'），去掉后再展示
+  if (m) return `选项 '${m[1].replace(/ <value>$/, '')}' 缺少参数值`;
   m = msg.match(/^Option '([^']+)' does not take an argument/);
   if (m) return `选项 '${m[1]}' 不接受参数值`;
   return `参数解析失败: ${msg}`;

@@ -246,8 +246,12 @@ test('cli：未知选项报错中文化并置 exitCode=1', async () => {
   assert.equal(res.exitCode, 1);
 
   const missingValue = await runCli(['profile', 'list', '-p']);
-  assert.match(missingValue.stderr, /^选项 '-p, --profile .*缺少参数值/);
+  assert.match(missingValue.stderr, /^选项 '-p, --profile' 缺少参数值/);
   assert.equal(missingValue.exitCode, 1);
+
+  const missingPortalEnv = await runCli(['profile', 'list', '--portal-env']);
+  assert.match(missingPortalEnv.stderr, /^选项 '--portal-env' 缺少参数值/);
+  assert.equal(missingPortalEnv.exitCode, 1);
 
   const takesNoArg = await runCli(['profile', 'list', '--json=1']);
   assert.match(takesNoArg.stderr, /^选项 '--json' 不接受参数值/);
