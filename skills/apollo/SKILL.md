@@ -12,7 +12,7 @@ description: 用本技能自带的 apollo-cli 命令行工具查看、修改、�
 `<SK>` = 本次加载的 SKILL.md 所在目录的**绝对路径**。解析一次后在本次会话内复用同一个值，之后所有命令统一为
 `node "<SK>/scripts/apollo-cli.cjs" <命令> [选项]`（把 `<SK>` 换成解析出的绝对路径）。脚本路径必须加双引号：绝对路径可能含空格（如 Windows 用户名），不加引号会被 shell 拆成两段导致运行失败。
 
-- **用绝对路径调用，且不要 `cd` 到 skill 目录**：profile 与凭据按当前工作目录解析（见下文"命令要在项目根目录执行"），命令必须留在项目根目录执行。
+- **不要 `cd` 到 skill 目录**：所有命令留在项目根目录执行，原因见下文「命令要在项目根目录执行」。
 
 ## 可用性检查
 
@@ -24,16 +24,19 @@ description: 用本技能自带的 apollo-cli 命令行工具查看、修改、�
 
 ### 首次配置（推荐由你代跑，用户只提供三样信息）
 
-`profile list` 为空、或报"未找到凭据"、或用户所说的环境没有对应 profile 时，**不要**把 profile/portal-env/cluster/环境变量这些概念抛给用户，先一次性问齐三样：环境名（用户平时怎么叫就填什么，如 fat/uat/prod）、Portal 地址（浏览器地址栏里就是）、账号密码。内部环境名默认等于环境名大写，不用问。拿到后直接代跑（一条命令完成用户级配置 + 登录验证）：
+**不要**把 profile/portal-env/cluster/环境变量这些概念抛给用户，按三步走：
 
-```
-node "<SK>/scripts/apollo-cli.cjs" setup <环境名> --base-url <地址> --username <账号> --password <密码>
-```
+1. **问齐三样**：环境名（用户平时怎么叫就填什么，如 fat/uat/prod）、Portal 地址（浏览器地址栏里就是）、账号密码。内部环境名默认等于环境名大写，不用问。
+2. **代跑 setup**（一条命令完成用户级配置 + 登录验证）：
 
-- setup 先验证登录、成功才写入 `~/.apollo-cli/config.json`（profile 与凭据），失败会报原因且不落任何配置，核对后重跑即可；重跑可更新地址或密码。
+   ```
+   node "<SK>/scripts/apollo-cli.cjs" setup <环境名> --base-url <地址> --username <账号> --password <密码>
+   ```
+
+3. **确认成功再继续**：setup 先验证登录、成功才写入 `~/.apollo-cli/config.json`（profile 与凭据）；失败会报原因且不落任何配置，核对后重跑即可，重跑可更新地址或密码。成功后直接继续用户原来的任务，不要让用户重说一遍。
+
 - 密码会出现在你执行的命令里（本机私有会话），但不要在回复里复述密码，也不要把凭据写进任何项目文件（setup 只写用户级配置）。
 - 用户不想把密码交给你时，给他一行 `node "<SK>/scripts/apollo-cli.cjs" setup`，让他在自己的终端里交互式完成（密码不回显）。
-- 配置完成后直接继续用户原来的任务，不要让用户重说一遍。
 
 ## 命令速查
 
@@ -59,7 +62,7 @@ node "<SK>/scripts/apollo-cli.cjs" config releases <appId> [-n ns] [--limit n]
 
 ## 关键行为（容易踩坑的地方）
 
-1. **set / rm 只改草稿，publish 才生效。** 修改后告知用户"需要 publish 才生效"并询问是否发布；用户一开始就说"改完发布"时才连着执行。用户问"为什么改了没生效"时，先 `config releases` 看最近一次发布时间是否早于修改时间。
+1. **set / rm 只改草稿，publish 才生效。** 修改后告知用户"需要 publish 才生效"并询问是否发布；用户一开始就说"改完发布"时才连着执行。写后复核：set 后 `config get` 核对值，publish 后 `config releases` 核对本次发布记录。用户问"为什么改了没生效"时，先 `config ls` 看草稿里有没有这个 key、值对不对，再 `config releases` 看最近一次发布时间是否早于修改时间。
 
 2. **写操作影响的是共享的配置中心，先确认再执行。** 执行 set/rm/publish 前，核对 profile（`-p`）、appId、命名空间是否与用户意图一致；对生产类环境（prod/prd 等）的写操作和一切 `config rm`，必须先得到用户明确确认。需要先让用户看变更计划时，加 `--dry-run`（set/rm/publish 均支持）：会读取现状并输出计划，不做任何写入。`config rm` 在非交互终端必须带 `--yes`，否则会立即报错（不会挂起）。
 
@@ -79,16 +82,11 @@ node "<SK>/scripts/apollo-cli.cjs" config releases <appId> [-n ns] [--limit n]
 node "<SK>/scripts/apollo-cli.cjs" config get MyApp timeout -p fat   # 先看现值
 node "<SK>/scripts/apollo-cli.cjs" config set MyApp timeout 5000 -p fat --comment "压测调大超时"
 node "<SK>/scripts/apollo-cli.cjs" config publish MyApp -p fat --title "调大 timeout 至 5000"
+node "<SK>/scripts/apollo-cli.cjs" config releases MyApp -p fat --limit 1   # 复核本次发布已记录
 ```
 
 **读写 yml 字段：**
 ```bash
 node "<SK>/scripts/apollo-cli.cjs" config get MyApp server.port -n app.yml -p fat
 node "<SK>/scripts/apollo-cli.cjs" config set MyApp feature.newCheckout true -n app.yml -p fat
-```
-
-**排查"配置没生效"：**
-```bash
-node "<SK>/scripts/apollo-cli.cjs" config ls MyApp -p fat            # 草稿里有没有这个 key、值对不对
-node "<SK>/scripts/apollo-cli.cjs" config releases MyApp -p fat --limit 3   # 最近发布时间是否早于修改
 ```
